@@ -215,3 +215,44 @@ class TestRecordRender:
     def test_error(self) -> None:
         rec = ToolCallRecord("read_file", {"path": "../x"}, ok=False, summary="rejected: nope")
         assert rec.render() == "✗ read_file(path='../x') → rejected: nope"
+
+
+class TestReviewFindings:
+    def test_write_preserves_existing_mode(self, tools: FileTools, repo: Path) -> None:
+        # Review finding #2: mkstemp's 0600 must not replace the file's mode.
+        script = repo / "run.sh"
+        script.write_text("#!/bin/sh\n")
+        script.chmod(0o755)
+        tools.write_file("run.sh", "#!/bin/sh\necho hi\n")
+        assert script.stat().st_mode & 0o777 == 0o755
+
+    def test_new_file_gets_umask_mode(self, tools: FileTools, repo: Path) -> None:
+        tools.write_file("new.txt", "x")
+        assert (repo / "new.txt").stat().st_mode & 0o777 == 0o666 & ~ft._UMASK
+
+    def test_grep_times_out_instead_of_hanging(
+        self, tools: FileTools, repo: Path, monkeypatch: Any
+    ) -> None:
+        # Review finding #3: a runaway regex must end the search, not hang the call.
+        (repo / "s.txt").write_text("a" * 30 + "!\n")
+
+        class Slow:
+            def search(self, line: str, timeout: float) -> None:
+                raise TimeoutError("regex timed out")
+
+        monkeypatch.setattr(ft.regex, "compile", lambda p: Slow())
+        out = tools.grep("(a|aa)+$")
+        assert out["timed_out"] is True and out["truncated"] is True
+
+    def test_grep_passes_remaining_budget_as_timeout(
+        self, tools: FileTools, repo: Path, monkeypatch: Any
+    ) -> None:
+        seen: list[float] = []
+
+        class Spy:
+            def search(self, line: str, timeout: float) -> None:
+                seen.append(timeout)
+
+        monkeypatch.setattr(ft.regex, "compile", lambda p: Spy())
+        tools.grep("x")
+        assert seen and all(0 < t <= ft.GREP_TIMEOUT_SECONDS for t in seen)

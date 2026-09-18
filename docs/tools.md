@@ -42,13 +42,22 @@ inside a sandbox, then sends the result back. One MCP call can involve up to 20 
 **Sandbox rules:**
 - Every path is fully resolved (symlinks followed, `..` collapsed) and must stay inside the root —
   traversal, absolute paths elsewhere, and symlink escapes are rejected.
-- The deny-list (`.git/**`, `.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa*`, `*credentials*.json`,
-  `*-sa-key.json`) is checked case-insensitively on the requested path, the resolved path, and every
-  parent directory.
+- The deny-list (`.git/**`, `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`,
+  `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `*credentials*.json`, `*-sa-key.json`, `.ssh/**`,
+  `.aws/**`, `.gnupg/**`, `.netrc`, `.npmrc`, `.pypirc`) is checked case-insensitively, **at any
+  depth** (so a nested `vendor/x/.git/` is covered), on both the requested and the resolved path.
+- File tools switch themselves off when Claude Code is launched from your home directory, the
+  filesystem root, or any folder containing your home directory. The startup log says why.
+- `grep` stops after 10 seconds, so a pathological regex returns `timed_out` instead of hanging
+  the call.
 - Searches skip `.venv`, `venv`, `node_modules`, `__pycache__`, `dist`, `build`, and tool caches, and
   never follow symlinked directories. Those folders are still readable by direct path.
-- Writes are atomic and replace a symlink at the target rather than writing through it. There is no
+- Writes are atomic, keep the file's existing permissions (e.g. an executable script stays
+  executable), and replace a symlink at the target rather than writing through it. There is no
   delete, rename, chmod, or execute — nothing in the bridge spawns a process.
+- If the model is overloaded (503/429) **after** Gemini has written a file during the call, the
+  bridge returns an error instead of re-running the call on the fallback model, so writes are
+  never replayed.
 - Every call, including rejections, is listed under **Tool calls** in the transcript entry.
 
 **Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`) as

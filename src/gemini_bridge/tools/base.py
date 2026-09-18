@@ -123,6 +123,17 @@ async def call_gemini(
             records=records,
         )
 
+    fallback_at: Optional[int] = None  # records index where the fallback attempt began
+
+    def _tool_lines() -> list[str]:
+        lines = [r.render() for r in records]
+        if fallback_at is not None:
+            lines.insert(
+                fallback_at,
+                f"— {requested_model} unavailable; retried on fallback model {FALLBACK_MODEL} —",
+            )
+        return lines
+
     def _log_failure(message: str) -> ToolResult:
         if records:
             transcript.append(
@@ -131,19 +142,30 @@ async def call_gemini(
                 response=message,
                 thinking=effective_thinking,
                 session=session_name,
-                tool_calls=[r.render() for r in records],
+                tool_calls=_tool_lines(),
             )
         return message
 
     fallback_notice: Optional[str] = None
-    answered_by = model or client.default_model
+    requested_model = model or client.default_model
+    answered_by = requested_model
     try:
         response = await _do_ask(model)
     except ClientError as exc:
         # If retryable and the model we tried is not already the fallback, retry once on it.
         # `model or client.default_model` reflects the model actually used — when the caller
         # omits `model`, the effective default (not the fallback) was tried, so fallback applies.
-        requested = model or client.default_model
+        requested = requested_model
+        wrote = any(r.name == "write_file" and r.ok for r in records)
+        if _is_retryable(exc) and requested != FALLBACK_MODEL and wrote:
+            # Replaying the loop on another model would repeat writes that already happened.
+            _log.error(
+                "%s: %r overloaded after writing files — not falling back", tool_name, requested
+            )
+            return _log_failure(
+                f"[gemini-bridge error] {exc} (not retried on {FALLBACK_MODEL}: files were "
+                "already written this call — see the transcript)"
+            )
         if _is_retryable(exc) and requested != FALLBACK_MODEL:
             _log.warning(
                 "%s: model %r overloaded — falling back to %r",
@@ -151,6 +173,7 @@ async def call_gemini(
                 requested,
                 FALLBACK_MODEL,
             )
+            fallback_at = len(records)
             try:
                 response = await _do_ask(FALLBACK_MODEL)
                 answered_by = FALLBACK_MODEL
@@ -174,7 +197,7 @@ async def call_gemini(
         response=response,
         thinking=effective_thinking,
         session=session_name,
-        tool_calls=[r.render() for r in records],
+        tool_calls=_tool_lines(),
     )
     if saving:
         assert workspace is not None and artifact_topic is not None

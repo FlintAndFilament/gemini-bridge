@@ -14,8 +14,9 @@ Design notes:
     behind it. Keep it small, pure (no reads/writes of file contents), and heavily tested.
   - Every check runs on the fully resolved path (symlinks followed, '..' collapsed), which
     blocks traversal, absolute paths outside root, and symlink escape with one comparison.
-  - Deny patterns match case-insensitively (macOS volumes are usually case-insensitive) against
-    the path and every ancestor, so '.git/**' also covers '.git' itself.
+  - Deny patterns match case-insensitively (macOS volumes are usually case-insensitive) at any
+    depth: against every contiguous run of path segments, so '.git/**' covers '.git',
+    'sub/.git/config', and a vendored 'vendor/x/.git/hooks/pre-commit' alike.
   - resolve_for_write() does not follow a symlink at the final component: the caller replaces
     the link atomically instead of writing through it.
 
@@ -37,9 +38,20 @@ DEFAULT_DENY: tuple[str, ...] = (
     ".env.*",
     "**/*.pem",
     "**/*.key",
+    "**/*.p12",
+    "**/*.pfx",
     "**/id_rsa*",
+    "**/id_dsa*",
+    "**/id_ecdsa*",
+    "**/id_ed25519*",
     "**/*credentials*.json",
     "**/*-sa-key.json",
+    ".ssh/**",
+    ".aws/**",
+    ".gnupg/**",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
 )
 
 # Not traversed by list/glob/grep walks (noise, not secrets) — still readable by direct path.
@@ -64,16 +76,26 @@ class SandboxError(Exception):
 
 
 def _pattern_matches(rel: str, pattern: str) -> bool:
-    """Match one lowercase root-relative posix path (no ancestors) against one pattern."""
+    """Match one lowercase root-relative posix path against one pattern, at any depth.
+
+    Tries the pattern against every suffix of `rel` ('a/b/c', 'b/c', 'c'); is_denied() calls
+    this for every ancestor prefix, so together every contiguous run of segments is tested.
+    """
     pat = pattern.lower()
     while pat.startswith("**/"):
         pat = pat[3:]
-    if pat.endswith("/**"):
-        prefix = pat[:-3]
-        return rel == prefix or fnmatch.fnmatchcase(rel, prefix)
-    if "/" not in pat:
-        return fnmatch.fnmatchcase(rel.rsplit("/", 1)[-1], pat)
-    return fnmatch.fnmatchcase(rel, pat)
+    parts = rel.split("/")
+    for i in range(len(parts)):
+        tail = "/".join(parts[i:])
+        if pat.endswith("/**"):
+            if fnmatch.fnmatchcase(tail, pat[:-3]):
+                return True
+        elif "/" not in pat:
+            if fnmatch.fnmatchcase(parts[-1], pat):
+                return True
+        elif fnmatch.fnmatchcase(tail, pat):
+            return True
+    return False
 
 
 class Sandbox:

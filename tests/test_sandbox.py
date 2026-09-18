@@ -139,3 +139,41 @@ class TestWalk:
         # Skip dirs are pruned from walks started above them, but not denied.
         assert sandbox.resolve(".venv/lib/x.py") == repo / ".venv" / "lib" / "x.py"
         assert os.path.exists(sandbox.resolve(".venv/lib/x.py"))
+
+
+class TestDenyAtAnyDepth:
+    """Review finding #1: deny patterns must match nested paths, not only at the root."""
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "sub/.git/config",
+            "vendor/lib/.git/hooks/pre-commit",
+            ".ssh/id_ed25519",
+            "home/.ssh/config",
+            "id_ecdsa",
+            ".aws/credentials",
+            "x/.aws/config",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+            "certs/client.p12",
+            ".gnupg/pubring.kbx",
+        ],
+    )
+    def test_nested_and_extra_secrets_denied(self, sandbox: Sandbox, path: str) -> None:
+        with pytest.raises(SandboxError, match="denied"):
+            sandbox.resolve(path)
+
+    def test_nested_git_denied_for_write(self, sandbox: Sandbox) -> None:
+        with pytest.raises(SandboxError, match="denied"):
+            sandbox.resolve_for_write("vendor/lib/.git/hooks/pre-commit")
+
+    def test_custom_slash_pattern_matches_nested(self, repo: Path) -> None:
+        sb = Sandbox(repo, deny=["**/secrets/**"])
+        with pytest.raises(SandboxError):
+            sb.resolve("sub/secrets/a")
+
+    @pytest.mark.parametrize("path", ["src/identity.py", "docs/git-notes.md", "gitignore.md"])
+    def test_ordinary_names_not_denied(self, sandbox: Sandbox, path: str) -> None:
+        sandbox.resolve(path)

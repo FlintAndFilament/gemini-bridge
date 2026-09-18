@@ -513,3 +513,42 @@ class TestArtifacts:
             tools["gemini_brainstorm"].inputSchema["properties"]["write_artifact"]["default"]
             is False
         )
+
+
+class TestFallbackAfterTools:
+    """Review finding #5: never replay writes on the fallback model; mark the switch."""
+
+    async def _run(self, tmp_path: Path, first_call: str, args: dict) -> tuple[str, str]:  # type: ignore[type-arg]
+        client = _make_client_api_key()
+        busy = Exception("503 UNAVAILABLE model overloaded")
+        _mock_generate(
+            client,
+            side_effect=[_call_response(first_call, args)] + [busy] * 4 + [_text_response("fb")],
+        )
+        transcript = _make_transcript(tmp_path / "t")
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+            result = await call_gemini(
+                client=client,
+                transcript=transcript,
+                tool_name="gemini_review",
+                session_name="default",
+                system_instruction="Review.",
+                prompt="q",
+                thinking="low",
+                workspace=_workspace(tmp_path),
+                write=True,
+            )
+        return result, transcript.path.read_text()
+
+    async def test_no_fallback_after_a_write(self, tmp_path: Path) -> None:
+        result, log = await self._run(tmp_path, "write_file", {"path": "o.md", "content": "x"})
+        assert result.startswith("[gemini-bridge error]")
+        assert "not retried" in result
+        assert (tmp_path / "o.md").read_text() == "x"
+        assert "→ write_file" in log
+
+    async def test_fallback_after_reads_is_marked(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x\n")
+        result, log = await self._run(tmp_path, "read_file", {"path": "a.py"})
+        assert "fb" in result and "[gemini-bridge notice]" in result
+        assert "retried on fallback model" in log

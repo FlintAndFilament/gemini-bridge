@@ -68,3 +68,25 @@ def test_artifacts_dir_in_denied_path_rejected(tmp_path: Path) -> None:
 def test_artifacts_available_when_tools_disabled(tmp_path: Path) -> None:
     ws = build_workspace(_config(file_tools={"enabled": False}), tmp_path)
     assert ws.artifacts is not None
+
+
+def test_file_tools_disabled_when_root_is_home(tmp_path: Path, monkeypatch: object) -> None:
+    # Review finding #4: launching from $HOME must not expose the home directory.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))  # type: ignore[attr-defined]
+    ws = build_workspace(_config(), tmp_path)
+    assert ws.registry(write=False) is None
+    assert ws.disabled_reason is not None and "home" in ws.disabled_reason
+
+
+def test_file_tools_disabled_when_root_is_above_home(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "me"))  # type: ignore[attr-defined]
+    ws = build_workspace(_config(), tmp_path)
+    assert ws.registry(write=False) is None
+
+
+def test_file_tools_enabled_in_project_under_home(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))  # type: ignore[attr-defined]
+    project = tmp_path / "dev" / "proj"
+    project.mkdir(parents=True)
+    ws = build_workspace(_config(), project)
+    assert ws.registry(write=False) is not None and ws.disabled_reason is None

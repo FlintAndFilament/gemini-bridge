@@ -122,16 +122,21 @@ Master switch for Gemini's repository access (`list_dir`, `glob`, `grep`, `read_
 `write_file`). `false` declares no tools to Gemini at all — calls behave exactly as before this
 feature. Artifacts are unaffected (they are written by the bridge, not by Gemini).
 
+File tools are also switched off automatically when Claude Code is launched from your home
+directory, the filesystem root, or any directory containing your home directory — a sandbox
+rooted there would expose `~/.ssh`, cloud credentials, and shell history.
+
 ---
 
 ### `file_tools.deny`
 
 **Type:** list of glob patterns
-**Default:** `[".git/**", ".env", ".env.*", "**/*.pem", "**/*.key", "**/id_rsa*", "**/*credentials*.json", "**/*-sa-key.json"]`
+**Default:** `[".git/**", ".env", ".env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa*", "**/id_dsa*", "**/id_ecdsa*", "**/id_ed25519*", "**/*credentials*.json", "**/*-sa-key.json", ".ssh/**", ".aws/**", ".gnupg/**", ".netrc", ".npmrc", ".pypirc"]`
 
 Paths Gemini can never read, list, search, or write, even inside the project root. Matched
-case-insensitively against the path and each of its parent directories. A pattern without `/`
-matches a file or directory name anywhere; `dir/**` covers a directory and everything in it.
+case-insensitively **at any depth**: a pattern without `/` matches a file or directory name
+anywhere; `dir/**` covers any directory named `dir` and everything in it (so `.git/**` also
+covers a nested `vendor/lib/.git/`).
 **Setting this replaces the defaults** — copy them into your list if you want to keep them.
 
 ---

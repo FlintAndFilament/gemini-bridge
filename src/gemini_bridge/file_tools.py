@@ -10,10 +10,13 @@ Responsibilities:
 Design notes:
   - Every model-supplied path goes through Sandbox.resolve*/walk — nothing here opens a path
     the sandbox has not approved
-  - grep is pure-Python regex; nothing in this module spawns a process
+  - grep uses the `regex` module (a drop-in for `re`) because it supports a per-search timeout:
+    a model-written pattern with catastrophic backtracking ends the search instead of hanging
+    an uncancellable worker thread. Nothing in this module spawns a process.
   - Caps are module constants (read at call time) so they are visible in one place
   - Writes are atomic (temp file + os.replace in the target directory), which also replaces a
-    planted symlink instead of writing through it
+    planted symlink instead of writing through it. The file keeps its existing permission bits
+    (new files get the process umask), not mkstemp's 0600.
 
 Raises:
   SandboxError, ValueError, OSError — converted to {"error": ...} results by the registry
@@ -26,11 +29,14 @@ import asyncio
 import logging
 import os
 import re
+import stat
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
+import regex
 from google.genai import types
 
 from gemini_bridge.sandbox import Sandbox, SandboxError
@@ -46,7 +52,12 @@ GREP_MAX_MATCHES = 200
 GREP_MAX_FILES = 5000
 GREP_MAX_BYTES = 20 * 1024 * 1024
 GREP_MAX_LINE_CHARS = 2000
+GREP_TIMEOUT_SECONDS = 10.0  # whole-search budget, enforced per line by regex's timeout
 BINARY_SNIFF_BYTES = 8192
+
+# Read once at import (single-threaded) — os.umask can only be read by setting it.
+_UMASK = os.umask(0)
+os.umask(_UMASK)
 
 
 def _is_binary(data: bytes) -> bool:
@@ -127,8 +138,8 @@ class FileTools:
 
     def grep(self, pattern: str, path: str = ".", glob: Optional[str] = None) -> dict[str, Any]:
         try:
-            rx = re.compile(pattern)
-        except re.error as exc:
+            rx = regex.compile(pattern)
+        except regex.error as exc:
             raise ValueError(f"invalid regex: {exc}") from exc
         name_filter: Optional[Callable[[Path], bool]] = None
         if glob:
@@ -143,6 +154,19 @@ class FileTools:
         files_scanned = 0
         bytes_scanned = 0
         truncated = False
+        deadline = time.monotonic() + GREP_TIMEOUT_SECONDS
+
+        def result(truncated: bool, timed_out: bool = False) -> dict[str, Any]:
+            out: dict[str, Any] = {
+                "matches": matches,
+                "files_scanned": files_scanned,
+                "truncated": truncated,
+            }
+            if timed_out:
+                out["timed_out"] = True
+                out["hint"] = f"search exceeded {GREP_TIMEOUT_SECONDS:.0f}s; simplify the regex"
+            return out
+
         for file in self._sandbox.walk(start):
             if name_filter and not name_filter(file):
                 continue
@@ -160,13 +184,22 @@ class FileTools:
                 continue
             rel = self._sandbox.relative(file)
             for lineno, line in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
-                if len(line) > GREP_MAX_LINE_CHARS or not rx.search(line):
+                if len(line) > GREP_MAX_LINE_CHARS:
+                    continue
+                remaining = deadline - time.monotonic()
+                try:
+                    if remaining <= 0:
+                        raise TimeoutError
+                    hit = rx.search(line, timeout=remaining)
+                except TimeoutError:
+                    _log.warning("grep %r timed out after %.0fs", pattern, GREP_TIMEOUT_SECONDS)
+                    return result(truncated=True, timed_out=True)
+                if not hit:
                     continue
                 if len(matches) >= GREP_MAX_MATCHES:
-                    truncated = True
-                    return {"matches": matches, "files_scanned": files_scanned, "truncated": True}
+                    return result(truncated=True)
                 matches.append({"path": rel, "line": lineno, "text": line})
-        return {"matches": matches, "files_scanned": files_scanned, "truncated": truncated}
+        return result(truncated)
 
     def read_file(self, path: str, offset: int = 0, limit: Optional[int] = None) -> dict[str, Any]:
         if offset < 0 or (limit is not None and limit < 1):
@@ -210,10 +243,15 @@ class FileTools:
             )
         target = self._sandbox.resolve_for_write(path)
         target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() and not target.is_symlink():
+            mode = stat.S_IMODE(target.stat().st_mode)
+        else:
+            mode = 0o666 & ~_UMASK
         fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".gb-")
         try:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(data)
+                os.fchmod(fh.fileno(), mode)
             os.replace(tmp, target)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)

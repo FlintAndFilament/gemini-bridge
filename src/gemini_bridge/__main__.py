@@ -141,7 +141,7 @@ def main() -> None:
         sys.exit(1)
     _log.info(
         "file tools %s — sandbox root %s — artifacts → %s",
-        "enabled" if workspace.tools_enabled else "DISABLED (file_tools.enabled=false)",
+        "enabled" if workspace.tools_enabled else f"DISABLED ({workspace.disabled_reason})",
         workspace.sandbox.root,
         workspace.artifacts.directory,
     )

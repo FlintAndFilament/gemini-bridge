@@ -13,6 +13,9 @@ Design notes:
     construct sandboxes themselves
   - The kill switch (file_tools.enabled=false) yields no registry at all, so no tools are
     declared to Gemini. Artifacts are bridge-written and stay available either way.
+  - File tools are also switched off when the launch directory is the home directory, the
+    filesystem root, or any ancestor of home — a sandbox rooted there would expose ~/.ssh,
+    cloud credentials, and shell history to Gemini.
 
 Raises:
   SandboxError — artifacts_dir is outside the sandbox root or on the deny-list
@@ -38,6 +41,7 @@ class Workspace:
     file_tools: FileTools
     tools_enabled: bool
     artifacts: ArtifactStore
+    disabled_reason: Optional[str] = None
 
     def registry(self, *, write: bool) -> Optional[ToolRegistry]:
         """The file tools for one call, or None when the capability is switched off."""
@@ -49,9 +53,24 @@ class Workspace:
 def build_workspace(config: Config, cwd: Path) -> Workspace:
     """Build the workspace rooted at `cwd` (the directory Claude Code launched the bridge in)."""
     sandbox = Sandbox(cwd, deny=config.file_tools.deny)
+    reason = _unsafe_root_reason(sandbox.root)
+    if not config.file_tools.enabled:
+        reason = "file_tools.enabled=false"
     return Workspace(
         sandbox=sandbox,
         file_tools=FileTools(sandbox, max_write_bytes=config.file_tools.max_write_bytes),
-        tools_enabled=config.file_tools.enabled,
+        tools_enabled=reason is None,
         artifacts=ArtifactStore(sandbox.resolve(config.artifacts_dir)),
+        disabled_reason=reason,
     )
+
+
+def _unsafe_root_reason(root: Path) -> Optional[str]:
+    home = Path.home().resolve()
+    if root == Path(root.anchor):
+        return f"launch directory {root} is the filesystem root"
+    if root == home:
+        return f"launch directory {root} is your home directory"
+    if home.is_relative_to(root):
+        return f"launch directory {root} contains your home directory"
+    return None
