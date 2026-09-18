@@ -90,8 +90,9 @@ _NON_CHAT_MARKERS = (
 # Allowlist of recognized Gemini chat generations. The live catalog also carries non-chat
 # families (gemma, lyria, nano-banana, antigravity, deep-research) that a name blocklist can't
 # anticipate, so we invert to an allowlist: only list models the bridge can actually run —
-# i.e. the generations _model_family() accepts. Kept in sync with client._model_family.
-_CHAT_GENERATION_PREFIXES = ("gemini-2", "gemini-3")
+# i.e. the generations _model_family() accepts (Gemini 2 and every later major version).
+# Kept in sync with client._model_family.
+_CHAT_GENERATION = re.compile(r"gemini-(\d+)(?:[.-]|$)")
 
 
 # Model families the bridge can resolve to "newest" (#69).
@@ -183,7 +184,7 @@ def is_chat_capable(meta: ModelMeta) -> bool:
       1. when supported_actions is populated, must include `generateContent` (Vertex AI returns
          None for this field, so the gate is skipped entirely for Vertex models);
       2. must not carry a non-chat marker (image/tts/audio/embedding/live/computer-use/robotics/omni);
-      3. must be a recognized Gemini chat generation (gemini-2*/gemini-3*) or a '-latest' alias —
+      3. must be a recognized Gemini chat generation (gemini-2 or any later major) or a '-latest' alias —
          an allowlist mirroring _model_family(), so non-chat families the bridge can't run
          (gemma, lyria, nano-banana, antigravity, deep-research) never appear.
     Previews (e.g. gemini-3-pro-preview) are intentionally included — they are valid, usable models.
@@ -194,4 +195,7 @@ def is_chat_capable(meta: ModelMeta) -> bool:
         return False
     if any(marker in name for marker in _NON_CHAT_MARKERS):
         return False
-    return name.startswith(_CHAT_GENERATION_PREFIXES) or name.endswith("-latest")
+    generation = _CHAT_GENERATION.match(name)
+    if generation:
+        return int(generation.group(1)) >= 2
+    return name.endswith("-latest")

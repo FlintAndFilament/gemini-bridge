@@ -595,3 +595,44 @@ class TestSelfHealLogging:
         with caplog.at_level("WARNING", logger="gemini_bridge.client"):
             await client.ask(session, "q", "none")
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+class TestReviewFindings69:
+    async def test_concurrent_rejection_after_fix_learned_still_retries(self) -> None:
+        # Finding 1: a second in-flight request rejected for MINIMAL after another request
+        # already raised the floor must retry (with LOW), not fail.
+        from google.genai.types import ThinkingLevel as L
+
+        client = _make_client()
+        client._thinking_floor["gemini-3.8-flash"] = L.LOW
+        err = _api_error("Thinking level MINIMAL is not supported for this model.")
+        assert client._learn_thinking("gemini-3.8-flash", err) is True
+
+    def test_already_budget_model_retries(self) -> None:
+        client = _make_client()
+        client._budget_models.add("m")
+        assert client._learn_thinking("m", _api_error(_LEVEL_UNSUPPORTED_MSG)) is True
+
+    def test_budget_floor_already_set_retries(self) -> None:
+        client = _make_client()
+        client._budget_floor["m"] = 128
+        assert client._learn_thinking("m", _api_error("Budget 0 is invalid.")) is True
+
+    def test_highest_level_rejected_gives_up(self) -> None:
+        client = _make_client()
+        err = _api_error("Thinking level HIGH is not supported for this model.")
+        assert client._learn_thinking("m", err) is False
+
+    def test_implicit_default_preview_does_not_warn(self, caplog: pytest.LogCaptureFixture) -> None:
+        # Finding 2: the resolver may pick a preview as newest Flash; that is intended.
+        config = Config(auth={"method": "api_key"})
+        with patch("google.genai.Client"):
+            client = GeminiClient(config, api_key="k")
+        client._raw_client.models.list.return_value = _catalog("gemini-3.9-flash-preview")
+        client.refresh_latest()
+        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+            client.get_or_create_session("x")
+        assert "preview model" not in caplog.text
+
+
+_LEVEL_UNSUPPORTED_MSG = "Thinking level is not supported for this model."

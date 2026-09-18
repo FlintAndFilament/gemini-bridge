@@ -263,3 +263,15 @@ class TestSchemaHintAliases:
     def test_aliases_offered_without_resolution(self) -> None:
         hint = models.schema_hint(models.DEVELOPER_API, "gemini-3.5-flash")
         assert "flash, flash-lite, pro" in hint
+
+
+class TestFutureGenerations:
+    """Finding 3: the list filter must accept every generation _model_family accepts."""
+
+    @pytest.mark.parametrize("name", ["models/gemini-4-flash", "models/gemini-10.2-pro"])
+    def test_later_generations_listed(self, name: str) -> None:
+        assert models.is_chat_capable(_meta(name))
+
+    @pytest.mark.parametrize("name", ["models/gemini-1.5-flash", "models/gemini-embedding-001"])
+    def test_older_or_non_generation_excluded(self, name: str) -> None:
+        assert not models.is_chat_capable(_meta(name))

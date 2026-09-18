@@ -205,8 +205,8 @@ class GeminiClient:
         """
         effective_model = self.resolve_model(model)
         requested = model or self._config.default_model
-        if not requested or models.alias_family(requested) is None:
-            # Only warn about ids the caller named; an alias resolving to a preview is intended.
+        if requested and models.alias_family(requested) is None:
+            # Only warn about ids the caller named; a preview chosen by resolution is intended.
             _warn_model_backend_mismatch(effective_model, self._is_vertex)
         cache_key = f"{name}:{effective_model}"
         if cache_key in self._sessions:
@@ -443,7 +443,11 @@ class GeminiClient:
         Handles the three rejections the API returns: a level the model does not support
         (step up to the next level and remember it), a model that takes no level at all
         (switch it to thinking_budget), and a model that cannot run with budget 0 (raise its
-        budget floor). Each adjustment is logged and applies for the rest of the process."""
+        budget floor). Each adjustment is logged and applies for the rest of the process.
+
+        If the needed adjustment is already in place — another concurrent request learned it
+        after this one was built — returns True as well: the retry rebuilds the config with it.
+        The caller's attempt cap bounds retries either way."""
         message = str(exc)
         rejected = _LEVEL_REJECTED.search(message)
         if rejected:
@@ -452,9 +456,9 @@ class GeminiClient:
             except ValueError:
                 return False
             current = self._thinking_floor.get(model)
-            if index + 1 >= len(_LEVEL_ORDER) or (
-                current is not None and _LEVEL_ORDER.index(current) > index
-            ):
+            if current is not None and _LEVEL_ORDER.index(current) > index:
+                return True  # already learned (concurrent request); retry uses the floor
+            if index + 1 >= len(_LEVEL_ORDER):
                 return False
             self._thinking_floor[model] = _LEVEL_ORDER[index + 1]
             _log.warning(
@@ -464,13 +468,15 @@ class GeminiClient:
                 _LEVEL_ORDER[index + 1].value,
             )
             return True
-        if _LEVEL_UNSUPPORTED in message and model not in self._budget_models:
+        if _LEVEL_UNSUPPORTED in message:
+            if model in self._budget_models:
+                return True  # already learned (concurrent request)
             self._budget_models.add(model)
             _log.warning("model %s takes no thinking level; switching it to thinking_budget", model)
             return True
         if _BUDGET_ZERO_REJECTED.search(message):
             if self._budget_floor.get(model, 0) >= _MIN_NONZERO_BUDGET:
-                return False
+                return True  # already learned (concurrent request)
             self._budget_floor[model] = _MIN_NONZERO_BUDGET
             _log.warning(
                 "model %s cannot run with thinking budget 0; using %d", model, _MIN_NONZERO_BUDGET
