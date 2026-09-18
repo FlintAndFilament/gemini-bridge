@@ -433,3 +433,83 @@ class TestToolCallsInTranscript:
         content = transcript.path.read_text()
         assert "→ read_file(path='a.py')" in content
         assert "[gemini-bridge error]" in content
+
+
+class TestArtifacts:
+    async def _call(
+        self,
+        tmp_path: Path,
+        tool: str,
+        args: dict,
+        **ws: object,  # type: ignore[type-arg]
+    ) -> str:
+        from datetime import datetime
+
+        from gemini_bridge.server import build_server
+
+        client = _make_client_api_key()
+        _mock_generate(client, return_value=_text_response("the answer"))
+        transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
+        mcp = build_server(client, transcript, _workspace(tmp_path, **ws))
+        content, _ = await mcp.call_tool(tool, args)  # type: ignore[misc]
+        return content[0].text  # type: ignore[no-any-return,index]
+
+    def _artifacts(self, tmp_path: Path) -> list[Path]:
+        d = tmp_path / "gemini-artifacts"
+        return sorted(d.iterdir()) if d.exists() else []
+
+    async def test_architect_saves_by_default(self, tmp_path: Path) -> None:
+        reply = await self._call(tmp_path, "gemini_architect", {"description": "Design a cache"})
+        [path] = self._artifacts(tmp_path)
+        assert path.name.endswith("-gemini-architect-design-a-cache.md")
+        assert "the answer" in path.read_text()
+        assert reply.startswith("the answer")
+        assert f"[gemini-bridge] artifact saved: gemini-artifacts/{path.name}" in reply
+
+    async def test_review_saves_by_default(self, tmp_path: Path) -> None:
+        await self._call(tmp_path, "gemini_review", {"content": "code", "question": "Is auth ok"})
+        [path] = self._artifacts(tmp_path)
+        assert path.name.endswith("-gemini-review-is-auth-ok.md")
+
+    async def test_opt_out(self, tmp_path: Path) -> None:
+        reply = await self._call(
+            tmp_path, "gemini_architect", {"description": "d", "write_artifact": False}
+        )
+        assert self._artifacts(tmp_path) == []
+        assert "artifact" not in reply
+
+    async def test_brainstorm_off_by_default(self, tmp_path: Path) -> None:
+        await self._call(tmp_path, "gemini_brainstorm", {"topic": "t"})
+        assert self._artifacts(tmp_path) == []
+
+    async def test_brainstorm_opt_in(self, tmp_path: Path) -> None:
+        await self._call(tmp_path, "gemini_brainstorm", {"topic": "t", "write_artifact": True})
+        assert len(self._artifacts(tmp_path)) == 1
+
+    async def test_saved_even_with_tools_disabled(self, tmp_path: Path) -> None:
+        await self._call(tmp_path, "gemini_review", {"content": "c"}, enabled=False)
+        assert len(self._artifacts(tmp_path)) == 1
+
+    async def test_save_failure_keeps_answer(self, tmp_path: Path, monkeypatch: object) -> None:
+        from gemini_bridge.artifacts import ArtifactStore
+
+        def boom(*a: object, **k: object) -> Path:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(ArtifactStore, "save", boom)  # type: ignore[attr-defined]
+        reply = await self._call(tmp_path, "gemini_review", {"content": "c"})
+        assert reply.startswith("the answer")
+        assert "[gemini-bridge notice] artifact not saved: disk full" in reply
+
+    def test_ask_and_debug_have_no_write_artifact_param(self, tmp_path: Path) -> None:
+        mcp = _register_all_tools(tmp_path)
+        tools = {t.name: t for t in asyncio.run(mcp.list_tools())}  # type: ignore[attr-defined]
+        assert "write_artifact" not in tools["gemini_ask"].inputSchema["properties"]
+        assert "write_artifact" not in tools["gemini_debug"].inputSchema["properties"]
+        assert (
+            tools["gemini_architect"].inputSchema["properties"]["write_artifact"]["default"] is True
+        )
+        assert (
+            tools["gemini_brainstorm"].inputSchema["properties"]["write_artifact"]["default"]
+            is False
+        )

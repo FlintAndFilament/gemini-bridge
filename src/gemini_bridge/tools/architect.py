@@ -68,6 +68,15 @@ def register(
             str, Field(description="Session name for conversation continuity.")
         ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
+        write_artifact: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Save the response as a timestamped Markdown file in the artifacts "
+                    "directory (default true). Set false to skip."
+                )
+            ),
+        ] = True,
     ) -> ToolResult:
         """Ask Gemini to evaluate a system design or architecture. Gemini will be opinionated
         where warranted and name tradeoffs explicitly when choices are context-dependent."""
@@ -83,4 +92,5 @@ def register(
             model=model,
             workspace=workspace,
             write=_WRITE,
+            artifact_topic=(question or description) if write_artifact else None,
         )

@@ -40,3 +40,31 @@ def test_custom_deny_reaches_sandbox(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("x")
     ws = build_workspace(_config(file_tools={"deny": ["*.secret"]}), tmp_path)
     assert ws.sandbox.resolve(".env") == (tmp_path / ".env").resolve()
+
+
+def test_artifacts_dir_defaults_inside_root(tmp_path: Path) -> None:
+    ws = build_workspace(_config(), tmp_path)
+    assert ws.artifacts.directory == tmp_path.resolve() / "gemini-artifacts"
+
+
+def test_artifacts_dir_outside_root_rejected(tmp_path: Path) -> None:
+    import pytest
+
+    from gemini_bridge.sandbox import SandboxError
+
+    with pytest.raises(SandboxError):
+        build_workspace(_config(artifacts_dir="../elsewhere"), tmp_path)
+
+
+def test_artifacts_dir_in_denied_path_rejected(tmp_path: Path) -> None:
+    import pytest
+
+    from gemini_bridge.sandbox import SandboxError
+
+    with pytest.raises(SandboxError):
+        build_workspace(_config(artifacts_dir=".git/artifacts"), tmp_path)
+
+
+def test_artifacts_available_when_tools_disabled(tmp_path: Path) -> None:
+    ws = build_workspace(_config(file_tools={"enabled": False}), tmp_path)
+    assert ws.artifacts is not None

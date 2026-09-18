@@ -93,6 +93,7 @@ def main() -> None:
     from gemini_bridge.auth import AuthError, build_auth
     from gemini_bridge.client import GeminiClient
     from gemini_bridge.config import ConfigError, load_config
+    from gemini_bridge.sandbox import SandboxError
     from gemini_bridge.server import build_server
     from gemini_bridge.transcript import TranscriptWriter
     from gemini_bridge.workspace import build_workspace
@@ -133,11 +134,16 @@ def main() -> None:
 
     _log.info("transcript → %s", transcript.path)
 
-    workspace = build_workspace(config, Path.cwd())
+    try:
+        workspace = build_workspace(config, Path.cwd())
+    except SandboxError as exc:
+        _log.error("startup failed — artifacts_dir %r: %s", config.artifacts_dir, exc)
+        sys.exit(1)
     _log.info(
-        "file tools %s — sandbox root %s",
+        "file tools %s — sandbox root %s — artifacts → %s",
         "enabled" if workspace.tools_enabled else "DISABLED (file_tools.enabled=false)",
         workspace.sandbox.root,
+        workspace.artifacts.directory,
     )
 
     server = build_server(client, transcript, workspace)
