@@ -141,3 +141,18 @@ class TestRegistration:
         lm.register(mcp, client, TranscriptWriter(str(tmp_path), datetime.now()))
         tool = next(t for t in asyncio.run(mcp.list_tools()) if t.name == "gemini_list_models")
         assert "refresh" in tool.inputSchema["properties"]
+
+
+class TestLatestMarkers:
+    def test_marks_latest_per_family(self) -> None:
+        from gemini_bridge.tools.list_models import format_model_list
+
+        out = format_model_list(
+            [_meta("models/gemini-3.8-flash", "3.8"), _meta("models/gemini-3.5-flash", "3.5")],
+            "developer",
+            "gemini-3.8-flash",
+            {"flash": "gemini-3.8-flash"},
+        )
+        line = next(ln for ln in out.splitlines() if "gemini-3.8-flash " in ln)
+        assert "default" in line and "latest flash" in line
+        assert "flash / flash-lite / pro" in out

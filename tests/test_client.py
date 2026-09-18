@@ -121,11 +121,13 @@ class TestThinkingConfig:
         cfg = client._build_generation_config("low", model="gemini-2-flash-exp")
         assert cfg.thinking_config.thinking_budget == 1024  # type: ignore[union-attr]
 
-    def test_latest_alias_treated_as_gemini2(self) -> None:
+    def test_latest_alias_resolves_before_choosing_thinking_param(self) -> None:
+        # #69: '-latest' aliases were assumed Gemini 2.x and sent thinking_budget. They now
+        # resolve to a concrete id first (here the pinned Flash, no catalog) -> thinking_level.
         client = _make_client()
         cfg = client._build_generation_config("low", model="gemini-flash-latest")
-        # Should use thinking_budget (GEMINI_2 path), not thinking_level
-        assert cfg.thinking_config.thinking_budget == 1024  # type: ignore[union-attr]
+        assert cfg.thinking_config.thinking_level is not None  # type: ignore[union-attr]
+        assert cfg.thinking_config.thinking_budget is None  # type: ignore[union-attr]
 
     def test_gemini2_pro_thinking_none_clamped_to_minimum(self) -> None:
         client = _make_client()
@@ -373,3 +375,223 @@ class TestAskWithTools:
         cfg = _make_client().build_config("low", declarations=[decl], allow_tools=False)
         assert cfg.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.NONE  # type: ignore[union-attr]
         assert cfg.tools is not None
+
+
+def _catalog(*ids: str) -> list:  # type: ignore[type-arg]
+    from types import SimpleNamespace
+
+    return [SimpleNamespace(name=f"models/{i}", supported_actions=["generateContent"]) for i in ids]
+
+
+LIVE_IDS = (
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-pro",
+)
+
+
+def _resolved_client(default_model=None) -> GeminiClient:  # type: ignore[no-untyped-def]
+    config = Config(auth={"method": "api_key"}, default_model=default_model)
+    with patch("google.genai.Client"):
+        client = GeminiClient(config, api_key="k")
+    client._raw_client.models.list.return_value = _catalog(*LIVE_IDS)
+    client.refresh_latest()
+    return client
+
+
+class TestLatestResolution:
+    """#69: omit the model -> newest Flash; aliases resolve on both backends."""
+
+    def test_default_is_newest_flash(self) -> None:
+        assert _resolved_client().default_model == "gemini-3.8-flash"
+
+    def test_fallback_is_newest_flash_lite(self) -> None:
+        assert _resolved_client().fallback_model == "gemini-3.5-flash-lite"
+
+    def test_unresolved_client_uses_pinned_constants(self) -> None:
+        from gemini_bridge.client import FALLBACK_MODEL
+
+        client = _make_client()
+        assert client.default_model == DEFAULT_MODEL
+        assert client.fallback_model == FALLBACK_MODEL
+
+    def test_refresh_failure_keeps_pinned(self) -> None:
+        client = _make_client()
+        client._raw_client.models.list.side_effect = RuntimeError("network down")
+        assert client.refresh_latest() == {}
+        assert client.default_model == DEFAULT_MODEL
+
+    @pytest.mark.parametrize(
+        ("requested", "concrete"),
+        [
+            ("flash", "gemini-3.8-flash"),
+            ("pro", "gemini-3.1-pro-preview"),
+            ("flash-lite", "gemini-3.5-flash-lite"),
+            ("gemini-pro-latest", "gemini-3.1-pro-preview"),
+            ("gemini-flash-latest", "gemini-3.8-flash"),
+            ("gemini-3.5-flash", "gemini-3.5-flash"),  # explicit pin is never rewritten
+        ],
+    )
+    def test_resolve_model(self, requested: str, concrete: str) -> None:
+        assert _resolved_client().resolve_model(requested) == concrete
+
+    def test_alias_without_resolution_uses_pinned_family(self) -> None:
+        client = _make_client()
+        assert client.resolve_model("flash") == DEFAULT_MODEL
+        assert client.resolve_model("pro") == "gemini-3.1-pro-preview"
+
+    def test_config_default_can_be_an_alias(self) -> None:
+        assert _resolved_client(default_model="pro").default_model == "gemini-3.1-pro-preview"
+
+    def test_config_default_pin_beats_latest(self) -> None:
+        assert _resolved_client(default_model="gemini-3.5-flash").default_model == (
+            "gemini-3.5-flash"
+        )
+
+    def test_sessions_keyed_by_concrete_model(self) -> None:
+        client = _resolved_client()
+        a = client.get_or_create_session("ask:default", model="flash")
+        b = client.get_or_create_session("ask:default", model="gemini-3.8-flash")
+        assert a is b and a.model == "gemini-3.8-flash"
+
+    def test_alias_gets_gemini3_thinking_config(self) -> None:
+        # Previously '-latest' aliases were assumed Gemini 2.x and sent thinking_budget.
+        cfg = _resolved_client().build_config("medium", model="gemini-pro-latest")
+        assert cfg.thinking_config.thinking_level is not None  # type: ignore[union-attr]
+        assert cfg.thinking_config.thinking_budget is None  # type: ignore[union-attr]
+
+
+class TestThinkingParameter:
+    """The parameter name depends on the concrete model generation."""
+
+    @pytest.mark.parametrize("model", ["gemini-4-flash", "gemini-5.2-pro", "gemini-3.8-flash"])
+    def test_gemini3_and_later_use_level(self, model: str) -> None:
+        cfg = _make_client().build_config("low", model=model)
+        assert cfg.thinking_config.thinking_level is not None  # type: ignore[union-attr]
+
+    def test_gemini2_uses_budget(self) -> None:
+        cfg = _make_client().build_config("low", model="gemini-2.5-flash")
+        assert cfg.thinking_config.thinking_budget == 1024  # type: ignore[union-attr]
+
+
+def _api_error(message: str) -> Exception:
+    return RuntimeError(
+        "400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': '" + message + "', "
+        "'status': 'INVALID_ARGUMENT'}}"
+    )
+
+
+class TestThinkingSelfHeal:
+    """Messages verbatim from the live Developer API, 2026-09-17."""
+
+    async def test_minimal_rejected_steps_up_to_low_and_is_remembered(self) -> None:
+        from google.genai.types import ThinkingLevel as L
+
+        client = _make_client()
+        gen = _mock_generate(
+            client,
+            side_effect=[
+                _api_error(
+                    "Thinking level MINIMAL is not supported for this model. "
+                    "Please retry with other thinking level."
+                ),
+                _text_response("ok"),
+                _text_response("ok again"),
+            ],
+        )
+        session = client.get_or_create_session(model="gemini-3.8-flash")
+        assert await client.ask(session, "q", "none") == "ok"
+        levels = [c.kwargs["config"].thinking_config.thinking_level for c in gen.call_args_list]
+        assert levels == [L.MINIMAL, L.LOW]
+
+        await client.ask(session, "q2", "none")  # remembered: no second rejection
+        assert gen.call_args.kwargs["config"].thinking_config.thinking_level == L.LOW
+        assert gen.await_count == 3
+
+    async def test_higher_levels_unaffected_by_floor(self) -> None:
+        from google.genai.types import ThinkingLevel as L
+
+        client = _make_client()
+        client._thinking_floor["gemini-3.8-flash"] = L.LOW
+        cfg = client.build_config("high", model="gemini-3.8-flash")
+        assert cfg.thinking_config.thinking_level == L.HIGH  # type: ignore[union-attr]
+
+    async def test_level_unsupported_switches_to_budget(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(
+            client,
+            side_effect=[
+                _api_error("Thinking level is not supported for this model."),
+                _text_response("ok"),
+            ],
+        )
+        session = client.get_or_create_session(model="gemini-3.9-flash")
+        assert await client.ask(session, "q", "low") == "ok"
+        assert gen.call_args.kwargs["config"].thinking_config.thinking_budget == 1024
+
+    async def test_zero_budget_rejected_raises_budget(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(
+            client,
+            side_effect=[
+                _api_error("Budget 0 is invalid. This model only works in thinking mode."),
+                _text_response("ok"),
+            ],
+        )
+        session = client.get_or_create_session(model="gemini-2.7-flash")
+        assert await client.ask(session, "q", "none") == "ok"
+        assert gen.call_args.kwargs["config"].thinking_config.thinking_budget == 128
+
+    async def test_unrelated_400_is_not_retried(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(
+            client, side_effect=_api_error("Request contains an invalid argument.")
+        )
+        session = client.get_or_create_session(model="gemini-3.8-flash")
+        with pytest.raises(ClientError):
+            await client.ask(session, "q", "none")
+        assert gen.await_count == 1
+
+    async def test_does_not_loop_forever(self) -> None:
+        client = _make_client()
+        err = _api_error("Thinking level MINIMAL is not supported for this model.")
+        gen = _mock_generate(client, side_effect=[err] * 10)
+        session = client.get_or_create_session(model="gemini-3.8-flash")
+        with pytest.raises(ClientError):
+            await client.ask(session, "q", "none")
+        assert gen.await_count <= 4
+
+
+class TestPreviewWarning:
+    def test_alias_resolving_to_preview_does_not_warn(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = _resolved_client()
+        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+            client.get_or_create_session("x", model="pro")
+        assert "preview model" not in caplog.text
+
+    def test_explicit_preview_id_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = _resolved_client()
+        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+            client.get_or_create_session("x", model="gemini-3.1-pro-preview")
+        assert "preview model" in caplog.text
+
+
+class TestSelfHealLogging:
+    async def test_healed_call_logs_no_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = _make_client()
+        _mock_generate(
+            client,
+            side_effect=[
+                _api_error("Thinking level MINIMAL is not supported for this model."),
+                _text_response("ok"),
+            ],
+        )
+        session = client.get_or_create_session(model="gemini-3.8-flash")
+        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+            await client.ask(session, "q", "none")
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]

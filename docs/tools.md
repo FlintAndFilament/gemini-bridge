@@ -6,7 +6,8 @@ Six tools: five inference tools (`gemini_ask`, `gemini_brainstorm`, `gemini_revi
 The five inference tools share three optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; falls back to `default_thinking` in config
 - `session_name: str` — session identifier; v1 always uses the default session per tool
-- `model: str` — Gemini model id; omit for the server default (`gemini-3.5-flash`). The
+- `model: str` — `flash` / `flash-lite` / `pro` for the newest release of a family, or any Gemini
+  model id; omit for the server default (the newest Flash, resolved at startup). The
   parameter's description is **backend-aware** (it lists the models valid for your active
   backend). Sessions are keyed by tool + `session_name` + `model`, so switching model starts a
   fresh session. Call [`gemini_list_models`](#gemini_list_models) to discover valid values, and
@@ -82,7 +83,7 @@ answer, plus a `[gemini-bridge notice] artifact not saved: …` line. Artifacts 
 | `prompt` | string | yes | The question or request |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier (default: `"default"`) |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 
 **When to use:**
 - Direct questions with clear answers
@@ -112,7 +113,7 @@ gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait
 | `context` | string | no | What Claude is currently doing or has considered |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the ideas to `artifacts_dir` (default `false`) |
 
 **When to use:**
@@ -146,7 +147,7 @@ gemini_brainstorm(
 | `question` | string | no | Specific question to focus the review |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
@@ -180,7 +181,7 @@ gemini_review(
 | `context` | string | no | Relevant code, recent changes, environment details |
 | `thinking` | string | no | Reasoning depth (use `high` for complex failures) |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 
 **When to use:**
 - Unexplained test failures
@@ -214,7 +215,7 @@ gemini_debug(
 | `question` | string | no | Specific architecture question or concern |
 | `thinking` | string | no | Reasoning depth (use `high` for complex systems) |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
@@ -274,16 +275,16 @@ current catalog):
 ```
 Gemini chat models on Developer API (Google AI Studio) (17 available):
 
-  gemini-3.5-flash                    (default)  — Gemini 3.5 Flash
-  gemini-3.1-flash-lite               — Gemini 3.1 Flash Lite
-  gemini-2.5-pro                      — Gemini 2.5 Pro
-  gemini-3-pro-preview                — Gemini 3 Pro Preview
-  gemini-3.1-pro-preview              — Gemini 3.1 Pro Preview
+  gemini-3.8-flash                    (default, latest flash)  — Gemini 3.8 Flash
+  gemini-3.1-pro-preview              (latest pro)  — Gemini 3.1 Pro Preview
+  gemini-3.5-flash                    — Gemini 3.5 Flash
+  gemini-3.5-flash-lite               (latest flash-lite)  — Gemini 3.5 Flash Lite
   gemini-flash-latest                 (alias)  — Gemini Flash Latest
   gemini-pro-latest                   (alias)  — Gemini Pro Latest
   …
 
-Pass model='<id>' to any tool. Omit to use the default (gemini-3.5-flash).
+Pass model='<id>' to any tool. Omit to use the default (gemini-3.8-flash).
+Or pass flash / flash-lite / pro to get the newest release of that family.
 ```
 On a Vertex backend the header names Vertex AI and the `-latest` aliases are absent.
 

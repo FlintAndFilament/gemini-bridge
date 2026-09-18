@@ -110,26 +110,24 @@ def main() -> None:
         _log.error("startup failed — auth error: %s", exc)
         sys.exit(1)
 
-    from gemini_bridge.client import DEFAULT_MODEL
-
-    effective_default_model = config.default_model or DEFAULT_MODEL
-
-    if config.auth.method == "api_key":
-        _log.info(
-            "starting — auth=api_key default_thinking=%s default_model=%s",
-            config.default_thinking,
-            effective_default_model,
-        )
-    else:
-        _log.info(
-            "starting — auth=%s location=%s default_thinking=%s default_model=%s",
-            config.auth.method,
-            config.location,
-            config.default_thinking,
-            effective_default_model,
-        )
-
     client = GeminiClient(config, credentials=auth_result.credentials, api_key=auth_result.api_key)
+    latest = client.refresh_latest()  # one models.list call; pinned defaults if it fails
+    backend = (
+        "auth=api_key"
+        if config.auth.method == "api_key"
+        else f"auth={config.auth.method} location={config.location}"
+    )
+    _log.info(
+        "starting — %s default_thinking=%s default_model=%s fallback_model=%s",
+        backend,
+        config.default_thinking,
+        client.default_model,
+        client.fallback_model,
+    )
+    _log.info(
+        "latest models: %s",
+        ", ".join(f"{family}={mid}" for family, mid in latest.items()) or "unresolved (pinned)",
+    )
     transcript = TranscriptWriter(config.transcript_dir, startup_time)
 
     _log.info("transcript → %s", transcript.path)

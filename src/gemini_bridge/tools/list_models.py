@@ -20,7 +20,7 @@ Imports:  models.py (filter + shortlist), client.py (GeminiClient, ClientError),
           tools/base.py (ToolResult), transcript.py (TranscriptWriter, signature parity)
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -47,16 +47,22 @@ def _is_alias(model_id: str) -> bool:
     return model_id.endswith("-latest") or "-latest-" in model_id
 
 
-def _markers(model_id: str, default_model: str) -> str:
+def _markers(model_id: str, default_model: str, latest: Optional[dict[str, str]] = None) -> str:
     tags = []
     if model_id == default_model:
         tags.append("default")
+    tags += [f"latest {family}" for family, mid in (latest or {}).items() if mid == model_id]
     if _is_alias(model_id):
         tags.append("alias")
     return f"  ({', '.join(tags)})" if tags else ""
 
 
-def format_model_list(raw_models: list[Any], backend: str, default_model: str) -> str:
+def format_model_list(
+    raw_models: list[Any],
+    backend: str,
+    default_model: str,
+    latest: Optional[dict[str, str]] = None,
+) -> str:
     """Render the live catalog: chat-capable only, default first, then alphabetical by id."""
     ids_seen: set[str] = set()
     rows: list[tuple[str, str]] = []  # (id, display_name)
@@ -82,10 +88,13 @@ def format_model_list(raw_models: list[Any], backend: str, default_model: str) -
     lines = [f"Gemini chat models on {backend_label} ({len(rows)} available):", ""]
     for model_id, display in rows:
         suffix = f"  — {display}" if display else ""
-        lines.append(f"  {model_id.ljust(width)}{_markers(model_id, default_model)}{suffix}")
+        lines.append(
+            f"  {model_id.ljust(width)}{_markers(model_id, default_model, latest)}{suffix}"
+        )
     lines += [
         "",
         f"Pass model='<id>' to any tool. Omit to use the default ({default_model}).",
+        "Or pass flash / flash-lite / pro to get the newest release of that family.",
     ]
     return "\n".join(lines)
 
@@ -117,7 +126,7 @@ def render_model_list(client: GeminiClient, backend: str) -> str:
         raw = client.list_models()
     except ClientError as exc:
         return format_static_fallback(backend, client.default_model, str(exc))
-    return format_model_list(raw, backend, client.default_model)
+    return format_model_list(raw, backend, client.default_model, client.resolved_latest)
 
 
 def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:

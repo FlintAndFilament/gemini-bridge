@@ -7,7 +7,10 @@ Responsibilities:
   - Build the google-genai Client from credentials and config
   - Create and cache named sessions (one per tool+session+model triple); the bridge owns each
     session's conversation history rather than delegating it to the SDK's chat object
-  - Translate named thinking levels to model-appropriate API parameters
+  - Resolve the model for each call: explicit id, bridge alias (flash / flash-lite / pro),
+    Google '-latest' alias, or — when omitted — the newest Flash found in the live catalog
+  - Translate named thinking levels to model-appropriate API parameters, learning per model
+    which levels it rejects (e.g. gemini-3.8-flash refuses MINIMAL)
   - Expose async ask() as the single interface all tools use
 
 Design notes:
@@ -28,6 +31,7 @@ Imports:  config.py (Config, ThinkingLevel), auth.py (build_credentials)
 import asyncio
 import logging
 import random
+import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -40,19 +44,25 @@ from google.genai import types
 from google.genai.types import GenerateContentConfig, ThinkingConfig
 from google.genai.types import ThinkingLevel as SDKThinkingLevel
 
+from gemini_bridge import models
 from gemini_bridge.config import Config, ModelFamily, ThinkingLevel
 from gemini_bridge.errors import ClientError
 from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
 
 __all__ = ["ClientError", "GeminiClient", "Session", "DEFAULT_MODEL", "FALLBACK_MODEL"]
 
-# Default model used when a tool call does not specify one (unless overridden by config).
-# gemini-3.5-flash is GA on both the Developer API and Vertex AI — the frontier Flash model.
+# Offline defaults (#69). At startup the bridge resolves the newest Flash / Flash-Lite / Pro from
+# the live catalog (refresh_latest); these pinned, known-good ids are used only when that catalog
+# cannot be read. gemini-3.5-flash and gemini-3.1-flash-lite are GA on both backends.
 DEFAULT_MODEL = "gemini-3.5-flash"
-# Fallback model used when the requested model returns a terminal 503/429. gemini-3.1-flash-lite
-# is GA on both backends (retires 2027+), the cheapest/most-available Gemini 3 model, and has a
-# Developer-API free tier — an ideal safety net, and distinct from the default so it substitutes.
+# Fallback for a terminal 503/429 on the requested model: the newest Flash-Lite when resolved,
+# else this pin — cheap, highly available, and distinct from the default so it substitutes.
 FALLBACK_MODEL = "gemini-3.1-flash-lite"
+_PINNED_BY_FAMILY: dict[str, str] = {
+    "flash": DEFAULT_MODEL,
+    "flash-lite": FALLBACK_MODEL,
+    "pro": "gemini-3.1-pro-preview",
+}
 
 # Thinking budget token counts for Gemini 2.x models
 _THINKING_BUDGET_2X: dict[str, int] = {
@@ -64,13 +74,28 @@ _THINKING_BUDGET_2X: dict[str, int] = {
 # gemini-2.x Pro models enforce a minimum thinking budget of 128; budget=0 is rejected
 _THINKING_BUDGET_2X_PRO_MIN = 128
 
-# Thinking level enum values for Gemini 3.x models
+# Thinking level enum values for Gemini 3+ models
 _THINKING_LEVEL_3X: dict[str, SDKThinkingLevel] = {
     "none": SDKThinkingLevel.MINIMAL,
     "low": SDKThinkingLevel.LOW,
     "medium": SDKThinkingLevel.MEDIUM,
     "high": SDKThinkingLevel.HIGH,
 }
+
+# Ascending cost; when a model rejects a level, the bridge steps UP to the next one.
+_LEVEL_ORDER: tuple[SDKThinkingLevel, ...] = (
+    SDKThinkingLevel.MINIMAL,
+    SDKThinkingLevel.LOW,
+    SDKThinkingLevel.MEDIUM,
+    SDKThinkingLevel.HIGH,
+)
+_MIN_NONZERO_BUDGET = 128
+_MAX_THINKING_ADJUSTMENTS = 2  # per request: e.g. switch to budget, then raise its floor
+
+# Verbatim Gemini API error messages (live, 2026-09-17).
+_LEVEL_REJECTED = re.compile(r"Thinking level (\w+) is not supported for this model")
+_LEVEL_UNSUPPORTED = "Thinking level is not supported for this model"
+_BUDGET_ZERO_REJECTED = re.compile(r"Budget 0 is invalid|only works in thinking mode")
 
 _MAX_SESSIONS = 50  # LRU cap; oldest session evicted when exceeded
 _MAX_RETRIES = 3
@@ -107,30 +132,27 @@ def _warn_model_backend_mismatch(model: str, is_vertex: bool) -> None:
 
 
 def _model_family(model: str) -> ModelFamily:
-    """Resolve model string to ModelFamily. Raises ClientError for unrecognized names.
+    """Which thinking parameter a concrete model id takes. Raises ClientError if unrecognized.
 
-    Generation is detected by the 'gemini-2' / 'gemini-3' prefix in either form — dotted
-    (gemini-3.5-flash, gemini-3.1-pro-preview) or hyphenated (gemini-3-pro-preview,
-    gemini-3-flash-preview). Both are valid, usable models; the hyphenated previews must
-    resolve to the right thinking-config family rather than being rejected.
-
-    '-latest' aliases (gemini-flash-latest, gemini-pro-latest, etc.) are accepted and
-    treated as GEMINI_2. A debug log notes the assumption so it's visible if behavior changes.
+    Gemini 2.x takes thinking_budget (GEMINI_2); Gemini 3 and every later generation take
+    thinking_level (GEMINI_3) — decided by the major version number, so gemini-4-flash works
+    without a code change. Dotted (gemini-3.5-flash) and hyphenated (gemini-3-pro-preview)
+    forms are both recognized. Callers resolve aliases first (GeminiClient.resolve_model);
+    an unknown '-latest' alias that still reaches here is assumed to be current-generation.
     """
-    if model.startswith("gemini-2"):
-        return ModelFamily.GEMINI_2
-    if model.startswith("gemini-3"):
+    match = re.match(r"gemini-(\d+)(?:[.-]|$)", model)
+    if match:
+        major = int(match.group(1))
+        if major == 2:
+            return ModelFamily.GEMINI_2
+        if major >= 3:
+            return ModelFamily.GEMINI_3
+    elif model.endswith("-latest") or "-latest-" in model:
+        _log.debug("unrecognized '-latest' alias %r; assuming thinking_level", model)
         return ModelFamily.GEMINI_3
-    if model.endswith("-latest") or "-latest-" in model:
-        _log.debug(
-            "model %r uses a '-latest' alias; assuming GEMINI_2 thinking-config. "
-            "If thinking-config errors occur, specify a versioned model instead.",
-            model,
-        )
-        return ModelFamily.GEMINI_2
     raise ClientError(
         f"Unrecognized model family: {model!r}. "
-        "Expected a 'gemini-2*' / 'gemini-3*' model or a '-latest' alias."
+        "Expected a 'gemini-<version>-…' model, a '-latest' alias, or flash / flash-lite / pro."
     )
 
 
@@ -164,6 +186,12 @@ class GeminiClient:
         self._is_vertex = api_key is None
         # Keyed by "{name}:{model}" — sessions are model-specific
         self._sessions: OrderedDict[str, Session] = OrderedDict()
+        # family -> newest concrete id, filled by refresh_latest(); empty = use pinned ids.
+        self._latest: dict[str, str] = {}
+        # Learned per model from API rejections (see _learn_thinking).
+        self._thinking_floor: dict[str, SDKThinkingLevel] = {}
+        self._budget_models: set[str] = set()
+        self._budget_floor: dict[str, int] = {}
 
     def get_or_create_session(
         self,
@@ -175,8 +203,11 @@ class GeminiClient:
         Sessions are keyed by (name, model) — changing the model creates a new session.
         Creating a session makes no API call.
         """
-        effective_model = model or self.default_model
-        _warn_model_backend_mismatch(effective_model, self._is_vertex)
+        effective_model = self.resolve_model(model)
+        requested = model or self._config.default_model
+        if not requested or models.alias_family(requested) is None:
+            # Only warn about ids the caller named; an alias resolving to a preview is intended.
+            _warn_model_backend_mismatch(effective_model, self._is_vertex)
         cache_key = f"{name}:{effective_model}"
         if cache_key in self._sessions:
             self._sessions.move_to_end(cache_key)
@@ -194,9 +225,47 @@ class GeminiClient:
 
     @property
     def default_model(self) -> str:
-        """Effective default model for calls that omit `model`: the config's `default_model`
-        override if set, else the built-in DEFAULT_MODEL."""
-        return self._config.default_model or DEFAULT_MODEL
+        """Concrete model for calls that omit `model`: the config's `default_model` (which may
+        itself be an alias) if set, else the newest Flash, else the pinned DEFAULT_MODEL."""
+        return self.resolve_model(None)
+
+    @property
+    def fallback_model(self) -> str:
+        """Model used after a terminal 503/429: newest Flash-Lite, else FALLBACK_MODEL."""
+        return self._latest.get("flash-lite", FALLBACK_MODEL)
+
+    @property
+    def resolved_latest(self) -> dict[str, str]:
+        """family -> newest concrete id found at startup (empty if the catalog was unreadable)."""
+        return dict(self._latest)
+
+    def resolve_model(self, model: Optional[str]) -> str:
+        """Concrete model id for a request. Precedence: per-call `model`, then config
+        `default_model`, then newest Flash. Aliases (flash / flash-lite / pro and Google's
+        '-latest' names) resolve to the newest id of their family — or its pinned id when the
+        catalog was unreadable. Concrete ids pass through untouched."""
+        requested = model or self._config.default_model
+        if not requested:
+            return self._latest.get("flash", DEFAULT_MODEL)
+        family = models.alias_family(requested)
+        if family is not None:
+            return self._latest.get(family, _PINNED_BY_FAMILY[family])
+        return requested
+
+    def refresh_latest(self) -> dict[str, str]:
+        """Resolve the newest model per family from the live catalog (call once at startup).
+
+        On failure keeps the pinned ids and returns {}. A restart picks up new releases; the
+        choice never changes mid-process, so a session stays on one model."""
+        try:
+            catalog = self.list_models()
+        except ClientError as exc:
+            _log.warning("could not resolve latest models (%s); using pinned defaults", exc)
+            return {}
+        self._latest = models.resolve_latest(getattr(m, "name", "") or "" for m in catalog)
+        if not self._latest:
+            _log.warning("no Flash/Pro models found in the catalog; using pinned defaults")
+        return dict(self._latest)
 
     @property
     def auth_method(self) -> str:
@@ -228,7 +297,7 @@ class GeminiClient:
         when declarations are given — the tool set. SDK automatic function calling is always
         disabled (the bridge runs its own loop). allow_tools=False keeps the declarations but
         forbids calls."""
-        effective_model = model or self.default_model
+        effective_model = self.resolve_model(model)
         si: dict[str, Any] = {
             "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True)
         }
@@ -242,9 +311,13 @@ class GeminiClient:
                         mode=types.FunctionCallingConfigMode.NONE
                     )
                 )
-        family = _model_family(effective_model)
+        family = (
+            ModelFamily.GEMINI_2
+            if effective_model in self._budget_models
+            else _model_family(effective_model)
+        )
         if family == ModelFamily.GEMINI_2:
-            budget = _THINKING_BUDGET_2X[thinking]
+            budget = max(_THINKING_BUDGET_2X[thinking], self._budget_floor.get(effective_model, 0))
             if "pro" in effective_model and budget < _THINKING_BUDGET_2X_PRO_MIN:
                 _log.debug(
                     "thinking=none clamped to %d for Pro model %r",
@@ -257,8 +330,12 @@ class GeminiClient:
                 **si,
             )
         if family == ModelFamily.GEMINI_3:
+            level = _THINKING_LEVEL_3X[thinking]
+            floor = self._thinking_floor.get(effective_model)
+            if floor is not None and _LEVEL_ORDER.index(level) < _LEVEL_ORDER.index(floor):
+                level = floor
             return GenerateContentConfig(
-                thinking_config=ThinkingConfig(thinking_level=_THINKING_LEVEL_3X[thinking]),
+                thinking_config=ThinkingConfig(thinking_level=level),
                 **si,
             )
         raise ClientError(
@@ -295,7 +372,9 @@ class GeminiClient:
                     await asyncio.sleep(delay)
                     continue
                 suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
-                _log.error("inference failed%s: %s", suffix, exc)
+                # Warning, not error: the caller may still recover (thinking self-heal, model
+                # fallback); tools/base.py logs the final failure at ERROR.
+                _log.warning("inference failed%s: %s", suffix, exc)
                 hint = ""
                 if _is_retryable(exc):
                     hint = (
@@ -334,10 +413,18 @@ class GeminiClient:
         async def generate(
             contents: list[types.Content], allow_tools: bool
         ) -> types.GenerateContentResponse:
-            config = self.build_config(
-                effective_thinking, system_instruction, session.model, declarations, allow_tools
-            )
-            return await self.generate(session.model, contents, config)
+            for attempt in range(_MAX_THINKING_ADJUSTMENTS + 1):
+                config = self.build_config(
+                    effective_thinking, system_instruction, session.model, declarations, allow_tools
+                )
+                try:
+                    return await self.generate(session.model, contents, config)
+                except ClientError as exc:
+                    if attempt == _MAX_THINKING_ADJUSTMENTS or not self._learn_thinking(
+                        session.model, exc
+                    ):
+                        raise
+            raise AssertionError("unreachable")  # pragma: no cover
 
         user_content = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
         result = await run_tool_loop(
@@ -349,3 +436,44 @@ class GeminiClient:
         session.history.extend([user_content, result.content])
         _log.debug("response_len=%d", len(result.text))
         return result.text
+
+    def _learn_thinking(self, model: str, exc: Exception) -> bool:
+        """Adapt to a thinking-config rejection for `model`; True means retry the request.
+
+        Handles the three rejections the API returns: a level the model does not support
+        (step up to the next level and remember it), a model that takes no level at all
+        (switch it to thinking_budget), and a model that cannot run with budget 0 (raise its
+        budget floor). Each adjustment is logged and applies for the rest of the process."""
+        message = str(exc)
+        rejected = _LEVEL_REJECTED.search(message)
+        if rejected:
+            try:
+                index = _LEVEL_ORDER.index(SDKThinkingLevel(rejected.group(1).upper()))
+            except ValueError:
+                return False
+            current = self._thinking_floor.get(model)
+            if index + 1 >= len(_LEVEL_ORDER) or (
+                current is not None and _LEVEL_ORDER.index(current) > index
+            ):
+                return False
+            self._thinking_floor[model] = _LEVEL_ORDER[index + 1]
+            _log.warning(
+                "model %s rejects thinking level %s; using %s instead for this model",
+                model,
+                rejected.group(1),
+                _LEVEL_ORDER[index + 1].value,
+            )
+            return True
+        if _LEVEL_UNSUPPORTED in message and model not in self._budget_models:
+            self._budget_models.add(model)
+            _log.warning("model %s takes no thinking level; switching it to thinking_budget", model)
+            return True
+        if _BUDGET_ZERO_REJECTED.search(message):
+            if self._budget_floor.get(model, 0) >= _MIN_NONZERO_BUDGET:
+                return False
+            self._budget_floor[model] = _MIN_NONZERO_BUDGET
+            _log.warning(
+                "model %s cannot run with thinking budget 0; using %d", model, _MIN_NONZERO_BUDGET
+            )
+            return True
+        return False
