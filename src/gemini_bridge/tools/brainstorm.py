@@ -26,6 +26,7 @@ from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 _SYSTEM_PROMPT = (
     "You are a creative thinking partner working alongside Claude, another AI. "
@@ -35,9 +36,16 @@ _SYSTEM_PROMPT = (
 )
 
 _TOOL_NAME = "gemini_brainstorm"
+# Capability row (#68): read + write_file.
+_WRITE = True
 
 
-def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:
+def register(
+    mcp: FastMCP,
+    client: GeminiClient,
+    transcript: TranscriptWriter,
+    workspace: Optional[Workspace] = None,
+) -> None:
     """Register gemini_brainstorm with the MCP server."""
     model_hint = model_param_hint(client)
 
@@ -73,4 +81,6 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             prompt=full_prompt,
             thinking=thinking,
             model=model,
+            workspace=workspace,
+            write=_WRITE,
         )

@@ -305,3 +305,66 @@ class TestDefaultModel:
         client = self._client_with_default("gemini-2.5-pro")
         cfg = client._build_generation_config("none")  # no model arg
         assert cfg.thinking_config.thinking_budget == 128  # type: ignore[union-attr]
+
+
+def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # type: ignore[type-arg]
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(function_call=types.FunctionCall(name=name, args=args))],
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def _echo_registry():  # type: ignore[no-untyped-def]
+    from gemini_bridge.tool_loop import ToolRegistry
+
+    reg = ToolRegistry()
+
+    async def handler(args: dict) -> dict:  # type: ignore[type-arg]
+        return {"content": "file body"}
+
+    reg.add(types.FunctionDeclaration(name="read_file", description="read"), handler)
+    return reg
+
+
+class TestAskWithTools:
+    async def test_tool_turns_not_committed_to_history(self) -> None:
+        client = _make_client()
+        _mock_generate(
+            client,
+            side_effect=[_call_response("read_file", {"path": "a.py"}), _text_response("done")],
+        )
+        session = client.get_or_create_session()
+        records: list = []  # type: ignore[type-arg]
+
+        result = await client.ask(session, "q", "low", registry=_echo_registry(), records=records)
+        assert result == "done"
+        assert [c.role for c in session.history] == ["user", "model"]
+        assert session.history[1].parts[0].text == "done"  # type: ignore[index]
+        assert [r.name for r in records] == ["read_file"]
+
+    async def test_declarations_sent_with_afc_disabled(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        session = client.get_or_create_session()
+        await client.ask(session, "q", "low", registry=_echo_registry())
+
+        cfg = gen.call_args.kwargs["config"]
+        assert [d.name for d in cfg.tools[0].function_declarations] == ["read_file"]
+        assert cfg.automatic_function_calling.disable is True
+
+    def test_build_config_without_declarations_has_no_tools(self) -> None:
+        cfg = _make_client().build_config("low")
+        assert cfg.tools is None and cfg.tool_config is None
+
+    def test_build_config_allow_tools_false_sets_mode_none(self) -> None:
+        decl = types.FunctionDeclaration(name="t", description="d")
+        cfg = _make_client().build_config("low", declarations=[decl], allow_tools=False)
+        assert cfg.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.NONE  # type: ignore[union-attr]
+        assert cfg.tools is not None

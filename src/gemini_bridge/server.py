@@ -5,7 +5,7 @@ MCP server construction and tool registration.
 
 Responsibilities:
   - Build the FastMCP server instance
-  - Accept pre-constructed GeminiClient and TranscriptWriter (injected by __main__.py)
+  - Accept pre-constructed GeminiClient, TranscriptWriter, and Workspace (injected by __main__.py)
   - Register all 6 tools by calling each tool module's register() function
   - Return the configured server instance for running
 
@@ -21,6 +21,8 @@ Used by:  __main__.py -> build_server()
 Imports:  client.py (GeminiClient), transcript.py (TranscriptWriter), tools/__init__.py
 """
 
+from typing import Optional
+
 from mcp.server.fastmcp import FastMCP
 
 from gemini_bridge.client import GeminiClient
@@ -33,17 +35,24 @@ from gemini_bridge.tools import (
     register_review,
 )
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 _SERVER_NAME = "gemini-bridge"
 
 
-def build_server(client: GeminiClient, transcript: TranscriptWriter) -> FastMCP:
-    """Construct and return the configured MCP server with all tools registered."""
+def build_server(
+    client: GeminiClient,
+    transcript: TranscriptWriter,
+    workspace: Optional[Workspace] = None,
+) -> FastMCP:
+    """Construct and return the configured MCP server with all tools registered.
+
+    `workspace` gives the generating tools repo file access; None disables it entirely."""
     mcp = FastMCP(_SERVER_NAME)
-    register_ask(mcp, client, transcript)
-    register_brainstorm(mcp, client, transcript)
-    register_review(mcp, client, transcript)
-    register_debug(mcp, client, transcript)
-    register_architect(mcp, client, transcript)
+    register_ask(mcp, client, transcript, workspace)
+    register_brainstorm(mcp, client, transcript, workspace)
+    register_review(mcp, client, transcript, workspace)
+    register_debug(mcp, client, transcript, workspace)
+    register_architect(mcp, client, transcript, workspace)
     register_list_models(mcp, client, transcript)
     return mcp

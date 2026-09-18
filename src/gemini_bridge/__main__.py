@@ -95,6 +95,7 @@ def main() -> None:
     from gemini_bridge.config import ConfigError, load_config
     from gemini_bridge.server import build_server
     from gemini_bridge.transcript import TranscriptWriter
+    from gemini_bridge.workspace import build_workspace
 
     try:
         config = load_config()
@@ -132,7 +133,14 @@ def main() -> None:
 
     _log.info("transcript → %s", transcript.path)
 
-    server = build_server(client, transcript)
+    workspace = build_workspace(config, Path.cwd())
+    _log.info(
+        "file tools %s — sandbox root %s",
+        "enabled" if workspace.tools_enabled else "DISABLED (file_tools.enabled=false)",
+        workspace.sandbox.root,
+    )
+
+    server = build_server(client, transcript, workspace)
     server.run()
 
 

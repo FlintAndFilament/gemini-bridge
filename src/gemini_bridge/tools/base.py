@@ -7,6 +7,7 @@ Responsibilities:
   - Define ToolResult type alias (return type for all tool handlers)
   - Define ThinkingParam type alias (optional thinking level parameter)
   - Provide call_gemini() helper that combines ask() + transcript append
+  - Give Gemini the file tools matching the calling tool's capability row (read / read+write)
 
 Design notes:
   - Interface Segregation: tools import only what they need from here; no server/config exposure
@@ -17,7 +18,8 @@ Raises:
   (none directly) — call_gemini() surfaces ClientError messages as ToolResult strings
 
 Used by:  tools/ask.py, tools/brainstorm.py, tools/review.py, tools/debug.py, tools/architect.py
-Imports:  client.py (GeminiClient), transcript.py (TranscriptWriter), config.py (ThinkingLevel)
+Imports:  client.py (GeminiClient), transcript.py (TranscriptWriter), config.py (ThinkingLevel),
+          workspace.py (Workspace), tool_loop.py (ToolCallRecord)
 """
 
 import logging
@@ -33,13 +35,25 @@ from gemini_bridge.client import (
 
 _log = logging.getLogger(__name__)
 from gemini_bridge.config import ThinkingLevel
+from gemini_bridge.tool_loop import ToolCallRecord
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 # Return type for all MCP tool handlers.
 ToolResult = str
 
 # Optional thinking level parameter type accepted by every tool.
 ThinkingParam = Optional[ThinkingLevel]
+
+_READ_PREAMBLE = (
+    "\n\nYou can inspect the repository under discussion with the tools list_dir, glob, grep, "
+    "and read_file. Paths are relative to the repository root. Read the relevant files before "
+    "making claims about them, and prefer one tool call at a time."
+)
+_WRITE_PREAMBLE = (
+    " You can also create or overwrite files with write_file; use it only when the request "
+    "explicitly calls for writing a file."
+)
 
 
 def model_param_hint(client: GeminiClient) -> str:
@@ -61,8 +75,14 @@ async def call_gemini(
     prompt: str,
     thinking: ThinkingParam,
     model: Optional[str] = None,
+    workspace: Optional[Workspace] = None,
+    write: bool = False,
 ) -> ToolResult:
     """Get a session, call ask(), log to transcript, return response or error string.
+
+    With a workspace, Gemini gets the read file tools (plus write_file when `write`) unless the
+    file_tools kill switch is off. Every tool call is recorded in the transcript — including
+    calls made before a failure.
 
     If the requested model returns a terminal overload error (503/429 after retries),
     automatically retries once against FALLBACK_MODEL and prefixes the response with a
@@ -77,9 +97,33 @@ async def call_gemini(
         effective_thinking,
     )
 
+    registry = workspace.registry(write=write) if workspace else None
+    if registry:
+        system_instruction += _READ_PREAMBLE + (_WRITE_PREAMBLE if write else "")
+    records: list[ToolCallRecord] = []
+
     async def _do_ask(use_model: Optional[str]) -> str:
         session = client.get_or_create_session(name=f"{tool_name}:{session_name}", model=use_model)
-        return await client.ask(session, prompt, thinking, system_instruction=system_instruction)
+        return await client.ask(
+            session,
+            prompt,
+            thinking,
+            system_instruction=system_instruction,
+            registry=registry,
+            records=records,
+        )
+
+    def _log_failure(message: str) -> ToolResult:
+        if records:
+            transcript.append(
+                tool_name=tool_name,
+                prompt=prompt,
+                response=message,
+                thinking=effective_thinking,
+                session=session_name,
+                tool_calls=[r.render() for r in records],
+            )
+        return message
 
     fallback_notice: Optional[str] = None
     try:
@@ -104,10 +148,12 @@ async def call_gemini(
                 )
             except ClientError as fallback_exc:
                 _log.error("%s fallback also failed: %s", tool_name, fallback_exc)
-                return f"[gemini-bridge error] {exc} (fallback also failed: {fallback_exc})"
+                return _log_failure(
+                    f"[gemini-bridge error] {exc} (fallback also failed: {fallback_exc})"
+                )
         else:
             _log.error("%s session=%r failed: %s", tool_name, session_name, exc)
-            return f"[gemini-bridge error] {exc}"
+            return _log_failure(f"[gemini-bridge error] {exc}")
 
     _log.debug("%s session=%r OK", tool_name, session_name)
     transcript.append(
@@ -116,6 +162,7 @@ async def call_gemini(
         response=response,
         thinking=effective_thinking,
         session=session_name,
+        tool_calls=[r.render() for r in records],
     )
     if fallback_notice:
         return f"{fallback_notice}{response}"

@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from google.genai import types
 
 from gemini_bridge.client import GeminiClient
@@ -294,3 +295,141 @@ class TestAllParamDescriptionsSurface:
         assert "Reasoning depth" in (_param_description(mcp, "gemini_ask", "thinking") or "")
         assert "stack trace" in (_param_description(mcp, "gemini_debug", "error") or "")
         assert "brainstorm" in (_param_description(mcp, "gemini_brainstorm", "topic") or "")
+
+
+def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # type: ignore[type-arg]
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(function_call=types.FunctionCall(name=name, args=args))],
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def _workspace(root: Path, **file_tools: object):  # type: ignore[no-untyped-def]
+    from gemini_bridge.workspace import build_workspace
+
+    cfg = Config(auth={"method": "api_key"}, file_tools=file_tools or {})  # type: ignore[arg-type]
+    return build_workspace(cfg, root)
+
+
+def _declared(gen: AsyncMock, call: int = 0) -> set[str]:
+    cfg = gen.call_args_list[call].kwargs["config"]
+    if not cfg.tools:
+        return set()
+    return {d.name for d in cfg.tools[0].function_declarations}
+
+
+READ_TOOLS = {"list_dir", "glob", "grep", "read_file"}
+
+
+class TestCapabilityMatrix:
+    """Each MCP tool, called through FastMCP, declares its row of the capability matrix."""
+
+    ARGS = {
+        "gemini_ask": {"prompt": "q"},
+        "gemini_debug": {"error": "boom"},
+        "gemini_brainstorm": {"topic": "t"},
+        "gemini_architect": {"description": "d"},
+        "gemini_review": {"content": "c"},
+    }
+    EXPECTED = {
+        "gemini_ask": READ_TOOLS,
+        "gemini_debug": READ_TOOLS,
+        "gemini_brainstorm": READ_TOOLS | {"write_file"},
+        "gemini_architect": READ_TOOLS | {"write_file"},
+        "gemini_review": READ_TOOLS | {"write_file"},
+    }
+
+    async def _run(self, tmp_path: Path, tool: str, workspace: object) -> AsyncMock:
+        from datetime import datetime
+
+        from mcp.server.fastmcp import FastMCP
+
+        from gemini_bridge.server import build_server
+
+        client = _make_client_api_key()
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
+        mcp: FastMCP = build_server(client, transcript, workspace)  # type: ignore[arg-type]
+        await mcp.call_tool(tool, self.ARGS[tool])
+        return gen
+
+    @pytest.mark.parametrize("tool", sorted(EXPECTED))
+    async def test_row(self, tmp_path: Path, tool: str) -> None:
+        gen = await self._run(tmp_path, tool, _workspace(tmp_path))
+        assert _declared(gen) == self.EXPECTED[tool]
+
+    @pytest.mark.parametrize("tool", sorted(EXPECTED))
+    async def test_no_workspace_no_tools(self, tmp_path: Path, tool: str) -> None:
+        gen = await self._run(tmp_path, tool, None)
+        assert _declared(gen) == set()
+
+    async def test_kill_switch(self, tmp_path: Path) -> None:
+        gen = await self._run(tmp_path, "gemini_review", _workspace(tmp_path, enabled=False))
+        assert _declared(gen) == set()
+
+    async def test_tools_preamble_added_to_system_instruction(self, tmp_path: Path) -> None:
+        gen = await self._run(tmp_path, "gemini_ask", _workspace(tmp_path))
+        si = gen.call_args.kwargs["config"].system_instruction
+        assert "read_file" in si and "write_file" not in si
+
+
+class TestToolCallsInTranscript:
+    async def test_tool_calls_logged_on_success(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x = 1\n")
+        client = _make_client_api_key()
+        _mock_generate(
+            client,
+            side_effect=[
+                _call_response("read_file", {"path": "a.py"}),
+                _call_response("read_file", {"path": "../escape"}),
+                _text_response("answer"),
+            ],
+        )
+        transcript = _make_transcript(tmp_path / "t")
+        result = await call_gemini(
+            client=client,
+            transcript=transcript,
+            tool_name="gemini_ask",
+            session_name="default",
+            system_instruction="Answer.",
+            prompt="q",
+            thinking="low",
+            workspace=_workspace(tmp_path),
+        )
+        assert result == "answer"
+        content = transcript.path.read_text()
+        assert "→ read_file(path='a.py')" in content
+        assert "✗ read_file(path='../escape') → rejected: path escapes repo root" in content
+
+    async def test_tool_calls_logged_when_call_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x = 1\n")
+        client = _make_client_api_key()
+        _mock_generate(
+            client,
+            side_effect=[
+                _call_response("read_file", {"path": "a.py"}),
+                RuntimeError("400 INVALID_ARGUMENT"),
+            ],
+        )
+        transcript = _make_transcript(tmp_path / "t")
+        result = await call_gemini(
+            client=client,
+            transcript=transcript,
+            tool_name="gemini_ask",
+            session_name="default",
+            system_instruction="Answer.",
+            prompt="q",
+            thinking="low",
+            workspace=_workspace(tmp_path),
+        )
+        assert result.startswith("[gemini-bridge error]")
+        content = transcript.path.read_text()
+        assert "→ read_file(path='a.py')" in content
+        assert "[gemini-bridge error]" in content

@@ -6,15 +6,24 @@ The bridge's own function-calling loop and the registry of tools Gemini may call
 Responsibilities:
   - ToolRegistry: map tool names to declarations + async handlers; dispatch without raising
   - ToolCallRecord: one executed call, rendered as a transcript line
+  - run_tool_loop(): request -> execute requested calls -> send results -> repeat, until Gemini
+    answers in text or the round cap forces a final answer
 
 Design notes:
   - Open/Closed: a tool source (file tools today, MCP servers in #70) only needs to add
     (declaration, handler) pairs — the loop never changes for a new source
   - dispatch() never raises: failures become {"error": ...} results returned to Gemini so the
     model can correct itself instead of the whole call failing
+  - The loop is ours rather than the SDK's automatic function calling: every call is recorded
+    as it happens, MALFORMED_FUNCTION_CALL turns are retried, and each model turn is kept
+    verbatim (including thought signatures, which Gemini 3.x requires echoed back)
+  - Calls within one turn run sequentially, in order, and are answered in a single message
+
+Raises:
+  ClientError — empty answer, or repeated MALFORMED_FUNCTION_CALL
 
 Used by:  file_tools.py (registry source), client.py (loop), tools/base.py (records)
-Imports:  google-genai types
+Imports:  errors.py (ClientError), google-genai types
 """
 
 import json
@@ -25,9 +34,17 @@ from typing import Any
 
 from google.genai import types
 
+from gemini_bridge.errors import ClientError
+
 _log = logging.getLogger(__name__)
 
 Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+# (contents, allow_tools) -> response. allow_tools=False forbids further calls.
+GenerateFn = Callable[[list[types.Content], bool], Awaitable[types.GenerateContentResponse]]
+
+MAX_ROUNDS = 20
+MAX_MALFORMED_RETRIES = 2
+BUDGET_EXHAUSTED_PROMPT = "Tool budget exhausted — answer now with what you have."
 
 _ARG_PREVIEW_CHARS = 60
 
@@ -93,3 +110,76 @@ class ToolRegistry:
         except Exception as exc:
             _log.info("tool %s failed: %s: %s", name, type(exc).__name__, exc)
             return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+@dataclass(frozen=True)
+class LoopResult:
+    """The final answer text and the model turn that produced it (committed to history)."""
+
+    text: str
+    content: types.Content
+
+
+async def _generate_turn(
+    generate: GenerateFn, history: list[types.Content], allow_tools: bool
+) -> types.Candidate:
+    """One model turn, retrying MALFORMED_FUNCTION_CALL up to MAX_MALFORMED_RETRIES times."""
+    for attempt in range(1, MAX_MALFORMED_RETRIES + 2):
+        response = await generate(history, allow_tools)
+        if not response.candidates:
+            _log.warning("Gemini returned no candidates (finish_reason=UNKNOWN)")
+            raise ClientError("Gemini returned no text (finish_reason=UNKNOWN).")
+        candidate = response.candidates[0]
+        if candidate.finish_reason != types.FinishReason.MALFORMED_FUNCTION_CALL:
+            return candidate
+        _log.warning("MALFORMED_FUNCTION_CALL (attempt %d/%d)", attempt, MAX_MALFORMED_RETRIES + 1)
+    raise ClientError(
+        f"Gemini returned MALFORMED_FUNCTION_CALL {MAX_MALFORMED_RETRIES + 1} times in a row."
+    )
+
+
+def _answer(candidate: types.Candidate) -> LoopResult:
+    content = candidate.content or types.Content(role="model", parts=[])
+    text = "".join(p.text for p in content.parts or [] if p.text and not p.thought)
+    if not text:
+        reason = candidate.finish_reason.name if candidate.finish_reason else "UNKNOWN"
+        _log.warning("Gemini returned no text (finish_reason=%s)", reason)
+        raise ClientError(f"Gemini returned no text (finish_reason={reason}).")
+    return LoopResult(text=text, content=content)
+
+
+async def run_tool_loop(
+    generate: GenerateFn,
+    contents: list[types.Content],
+    registry: ToolRegistry,
+    records: list[ToolCallRecord],
+    *,
+    max_rounds: int = MAX_ROUNDS,
+) -> LoopResult:
+    """Drive Gemini until it answers in text. Appends every executed call to `records` as it
+    happens (so callers can log them even if the loop later fails). `contents` is not mutated."""
+    history = list(contents)
+    for _ in range(max_rounds):
+        candidate = await _generate_turn(generate, history, allow_tools=True)
+        content = candidate.content
+        calls = (
+            [p.function_call for p in (content.parts or []) if p.function_call] if content else []
+        )
+        if not calls:
+            return _answer(candidate)
+        assert content is not None
+        history.append(content)
+        response_parts: list[types.Part] = []
+        for call in calls:
+            name = call.name or ""
+            args = dict(call.args or {})
+            result = await registry.dispatch(name, args)
+            ok, summary = summarize(result)
+            records.append(ToolCallRecord(name=name, args=args, ok=ok, summary=summary))
+            response_parts.append(types.Part.from_function_response(name=name, response=result))
+        history.append(types.Content(role="user", parts=response_parts))
+    _log.warning("tool loop hit the %d-round cap; forcing a final answer", max_rounds)
+    history.append(
+        types.Content(role="user", parts=[types.Part.from_text(text=BUDGET_EXHAUSTED_PROMPT)])
+    )
+    return _answer(await _generate_turn(generate, history, allow_tools=False))

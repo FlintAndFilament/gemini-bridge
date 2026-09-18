@@ -74,3 +74,22 @@ def test_append_survives_bad_path(capsys: object) -> None:
         thinking="none",
     )
     # Should not raise — write errors go to stderr, not exceptions
+
+
+def test_append_renders_tool_calls(tmp_path: Path) -> None:
+    writer = TranscriptWriter(str(tmp_path), datetime.now())
+    writer.append(
+        tool_name="gemini_review",
+        prompt="p",
+        response="r",
+        thinking="low",
+        tool_calls=["→ read_file(path='a.py') → 1.0 KiB", "✗ read_file(path='../x') → rejected"],
+    )
+    content = writer.path.read_text()
+    assert "**Tool calls:**\n- → read_file(path='a.py') → 1.0 KiB\n- ✗ read_file" in content
+
+
+def test_append_without_tool_calls_has_no_section(tmp_path: Path) -> None:
+    writer = TranscriptWriter(str(tmp_path), datetime.now())
+    writer.append(tool_name="gemini_ask", prompt="p", response="r", thinking="low")
+    assert "Tool calls" not in writer.path.read_text()

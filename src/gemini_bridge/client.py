@@ -42,6 +42,7 @@ from google.genai.types import ThinkingLevel as SDKThinkingLevel
 
 from gemini_bridge.config import Config, ModelFamily, ThinkingLevel
 from gemini_bridge.errors import ClientError
+from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
 
 __all__ = ["ClientError", "GeminiClient", "Session", "DEFAULT_MODEL", "FALLBACK_MODEL"]
 
@@ -139,17 +140,6 @@ class Session:
 
     model: str
     history: list[types.Content] = field(default_factory=list)
-
-
-def _response_text(response: types.GenerateContentResponse) -> str:
-    """Return the response text, or raise ClientError naming the finish reason when empty."""
-    if response.text:
-        return response.text
-    finish_reason = "UNKNOWN"
-    if response.candidates and response.candidates[0].finish_reason is not None:
-        finish_reason = response.candidates[0].finish_reason.name
-    _log.warning("Gemini returned no text (finish_reason=%s)", finish_reason)
-    raise ClientError(f"Gemini returned no text (finish_reason={finish_reason}).")
 
 
 class GeminiClient:
@@ -320,24 +310,40 @@ class GeminiClient:
         prompt: str,
         thinking: Optional[ThinkingLevel] = None,
         system_instruction: Optional[str] = None,
+        registry: Optional[ToolRegistry] = None,
+        records: Optional[list[ToolCallRecord]] = None,
     ) -> str:
-        """Send prompt in the session's context and return the response text.
+        """Send prompt in the session's context and return the answer text.
 
-        Commits [prompt, answer] to session.history only on success. Raises ClientError.
+        With a non-empty `registry`, Gemini may call its tools; each executed call is appended
+        to `records` as it happens. Only [prompt, final answer] is committed to
+        session.history, and only on success. Raises ClientError.
         """
         effective_thinking: ThinkingLevel = thinking or self._config.default_thinking
-        gen_config = self.build_config(effective_thinking, system_instruction, session.model)
+        declarations = registry.declarations if registry else None
         _log.debug(
-            "ask: model=%s thinking=%s prompt_len=%d",
+            "ask: model=%s thinking=%s prompt_len=%d tools=%d",
             session.model,
             effective_thinking,
             len(prompt),
+            len(declarations or []),
         )
+
+        async def generate(
+            contents: list[types.Content], allow_tools: bool
+        ) -> types.GenerateContentResponse:
+            config = self.build_config(
+                effective_thinking, system_instruction, session.model, declarations, allow_tools
+            )
+            return await self.generate(session.model, contents, config)
+
         user_content = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
-        contents = [*session.history, user_content]
-        response = await self.generate(session.model, contents, gen_config)
-        text = _response_text(response)
-        assert response.candidates and response.candidates[0].content is not None
-        session.history.extend([user_content, response.candidates[0].content])
-        _log.debug("response_len=%d", len(text))
-        return text
+        result = await run_tool_loop(
+            generate,
+            [*session.history, user_content],
+            registry or ToolRegistry(),
+            records if records is not None else [],
+        )
+        session.history.extend([user_content, result.content])
+        _log.debug("response_len=%d", len(result.text))
+        return result.text
