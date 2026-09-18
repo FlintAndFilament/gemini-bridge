@@ -41,7 +41,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_ask(
+    async def gemini_ask(
         prompt: Annotated[str, Field(description="The question or request to send to Gemini")],
         thinking: Annotated[
             Optional[ThinkingLevel],
@@ -56,7 +56,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
     ) -> ToolResult:
         """Ask Gemini a general question. Use when no other specialized tool fits."""
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,

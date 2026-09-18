@@ -2,7 +2,9 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from google.genai import types
 
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import Config
@@ -67,17 +69,30 @@ def _make_transcript(tmp_path: "Path") -> TranscriptWriter:
     return TranscriptWriter(str(tmp_path), datetime.now())
 
 
+def _text_response(text: str) -> types.GenerateContentResponse:
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(role="model", parts=[types.Part.from_text(text=text)]),
+                finish_reason=types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def _mock_generate(client: GeminiClient, **kwargs: object) -> AsyncMock:
+    mock = AsyncMock(**kwargs)
+    client._raw_client.aio.models.generate_content = mock
+    return mock
+
+
 class TestCallGemini:
-    def test_returns_response_on_success(self, tmp_path: object) -> None:
+    async def test_returns_response_on_success(self, tmp_path: Path) -> None:
         client = _make_client()
-        mock_chat = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "brainstorm result"
-        mock_chat.send_message.return_value = mock_response
-        client._raw_client.chats.create.return_value = mock_chat
+        _mock_generate(client, return_value=_text_response("brainstorm result"))
 
         transcript = _make_transcript(tmp_path)
-        result = call_gemini(
+        result = await call_gemini(
             client=client,
             transcript=transcript,
             tool_name="gemini_brainstorm",
@@ -88,14 +103,12 @@ class TestCallGemini:
         )
         assert result == "brainstorm result"
 
-    def test_returns_error_string_on_client_error(self, tmp_path: object) -> None:
+    async def test_returns_error_string_on_client_error(self, tmp_path: Path) -> None:
         client = _make_client()
-        mock_chat = MagicMock()
-        mock_chat.send_message.side_effect = Exception("API down")
-        client._raw_client.chats.create.return_value = mock_chat
+        _mock_generate(client, side_effect=Exception("API down"))
 
         transcript = _make_transcript(tmp_path)
-        result = call_gemini(
+        result = await call_gemini(
             client=client,
             transcript=transcript,
             tool_name="gemini_ask",
@@ -106,16 +119,12 @@ class TestCallGemini:
         )
         assert result.startswith("[gemini-bridge error]")
 
-    def test_appends_to_transcript_on_success(self, tmp_path: object) -> None:
+    async def test_appends_to_transcript_on_success(self, tmp_path: Path) -> None:
         client = _make_client()
-        mock_chat = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "done"
-        mock_chat.send_message.return_value = mock_response
-        client._raw_client.chats.create.return_value = mock_chat
+        _mock_generate(client, return_value=_text_response("done"))
 
         transcript = _make_transcript(tmp_path)
-        call_gemini(
+        await call_gemini(
             client=client,
             transcript=transcript,
             tool_name="gemini_review",
@@ -128,21 +137,16 @@ class TestCallGemini:
         assert "gemini_review" in content
         assert "Check this code." in content
 
-    def test_fallback_to_default_model_on_503(self, tmp_path: object) -> None:
+    async def test_fallback_to_default_model_on_503(self, tmp_path: Path) -> None:
         from gemini_bridge.client import FALLBACK_MODEL
 
         client = _make_client()
-        mock_busy_chat = MagicMock()
-        mock_busy_chat.send_message.side_effect = Exception("503 UNAVAILABLE model overloaded")
-        mock_fallback_chat = MagicMock()
-        mock_fallback_response = MagicMock()
-        mock_fallback_response.text = "fallback answer"
-        mock_fallback_chat.send_message.return_value = mock_fallback_response
-        client._raw_client.chats.create.side_effect = [mock_busy_chat, mock_fallback_chat]
+        busy = Exception("503 UNAVAILABLE model overloaded")
+        gen = _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fallback answer")])
 
         transcript = _make_transcript(tmp_path)
-        with patch("gemini_bridge.client.time.sleep"):
-            result = call_gemini(
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+            result = await call_gemini(
                 client=client,
                 transcript=transcript,
                 tool_name="gemini_ask",
@@ -156,8 +160,9 @@ class TestCallGemini:
         assert "gemini-3.5-flash" in result
         assert FALLBACK_MODEL in result
         assert "fallback answer" in result
+        assert gen.call_args.kwargs["model"] == FALLBACK_MODEL
 
-    def test_fallback_when_model_omitted_and_default_overloaded(self, tmp_path: object) -> None:
+    async def test_fallback_when_model_omitted_and_default_overloaded(self, tmp_path: Path) -> None:
         # Regression: when the caller omits `model`, the DEFAULT_MODEL is what gets tried.
         # If the default (!= fallback) overloads, we must still fall back — the guard must
         # compare against the model actually used, not FALLBACK_MODEL.
@@ -166,17 +171,12 @@ class TestCallGemini:
         assert DEFAULT_MODEL != FALLBACK_MODEL, "test only meaningful when they differ"
 
         client = _make_client()
-        mock_busy_chat = MagicMock()
-        mock_busy_chat.send_message.side_effect = Exception("503 UNAVAILABLE model overloaded")
-        mock_fallback_chat = MagicMock()
-        mock_fallback_response = MagicMock()
-        mock_fallback_response.text = "fallback answer"
-        mock_fallback_chat.send_message.return_value = mock_fallback_response
-        client._raw_client.chats.create.side_effect = [mock_busy_chat, mock_fallback_chat]
+        busy = Exception("503 UNAVAILABLE model overloaded")
+        _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fallback answer")])
 
         transcript = _make_transcript(tmp_path)
-        with patch("gemini_bridge.client.time.sleep"):
-            result = call_gemini(
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+            result = await call_gemini(
                 client=client,
                 transcript=transcript,
                 tool_name="gemini_ask",

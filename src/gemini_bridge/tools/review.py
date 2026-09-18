@@ -42,7 +42,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_review(
+    async def gemini_review(
         content: Annotated[str, Field(description="The code, design, or plan to review")],
         question: Annotated[
             str,
@@ -62,7 +62,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         """Ask Gemini to critically review code, a design, or a plan. Gemini will find
         problems and prioritize by severity."""
         full_prompt = content if not question else f"{content}\n\nFocus: {question}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,

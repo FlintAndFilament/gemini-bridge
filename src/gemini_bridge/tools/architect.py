@@ -42,7 +42,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_architect(
+    async def gemini_architect(
         description: Annotated[
             str, Field(description="The system design, architecture, or approach to evaluate")
         ],
@@ -64,7 +64,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         """Ask Gemini to evaluate a system design or architecture. Gemini will be opinionated
         where warranted and name tradeoffs explicitly when choices are context-dependent."""
         full_prompt = description if not question else f"{description}\n\nQuestion: {question}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,

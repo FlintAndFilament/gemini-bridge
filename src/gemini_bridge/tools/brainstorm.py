@@ -42,7 +42,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_brainstorm(
+    async def gemini_brainstorm(
         topic: Annotated[str, Field(description="The topic or problem to brainstorm about")],
         context: Annotated[
             str,
@@ -64,7 +64,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         """Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the
         current direction and play devil's advocate."""
         full_prompt = topic if not context else f"{topic}\n\nContext: {context}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,

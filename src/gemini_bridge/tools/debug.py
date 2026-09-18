@@ -41,7 +41,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_debug(
+    async def gemini_debug(
         error: Annotated[
             str, Field(description="The error message, stack trace, or failure description")
         ],
@@ -65,7 +65,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         """Ask Gemini for root cause hypotheses and diagnostic steps. Provide the error
         and any relevant context (code, recent changes, environment)."""
         full_prompt = error if not context else f"{error}\n\nContext:\n{context}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,
