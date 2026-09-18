@@ -5,15 +5,18 @@ Gemini chat session manager and unified ask() interface.
 
 Responsibilities:
   - Build the google-genai Client from credentials and config
-  - Create and cache named Chat sessions (one per tool+session+model triple)
+  - Create and cache named sessions (one per tool+session+model triple); the bridge owns each
+    session's conversation history rather than delegating it to the SDK's chat object
   - Translate named thinking levels to model-appropriate API parameters
-  - Expose ask() as the single interface all tools use
+  - Expose async ask() as the single interface all tools use
 
 Design notes:
   - Single Responsibility: session lifecycle + inference only; credentials come in ready-made
   - Open/Closed: new session names need no code changes — sessions are created on demand
   - Interface Segregation: tools receive only GeminiClient; they cannot access config or credentials
   - Dependency Inversion: client depends on google.auth.credentials.Credentials abstraction
+  - History is committed only when a call succeeds, so a failed call never leaves a session
+    holding a half-finished exchange
 
 Raises:
   ClientError — wraps inference and session failures with context for Claude to surface
@@ -22,21 +25,26 @@ Used by:  tools/*.py (via ask()), server.py (instantiates GeminiClient at startu
 Imports:  config.py (Config, ThinkingLevel), auth.py (build_credentials)
 """
 
+import asyncio
 import logging
 import random
-import time
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
 import google.auth.credentials
 from google import genai
-from google.genai.chats import Chat
+from google.genai import types
 from google.genai.types import GenerateContentConfig, ThinkingConfig
 from google.genai.types import ThinkingLevel as SDKThinkingLevel
 
 from gemini_bridge.config import Config, ModelFamily, ThinkingLevel
+from gemini_bridge.errors import ClientError
+from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
+
+__all__ = ["ClientError", "GeminiClient", "Session", "DEFAULT_MODEL", "FALLBACK_MODEL"]
 
 # Default model used when a tool call does not specify one (unless overridden by config).
 # gemini-3.5-flash is GA on both the Developer API and Vertex AI — the frontier Flash model.
@@ -126,8 +134,12 @@ def _model_family(model: str) -> ModelFamily:
     )
 
 
-class ClientError(Exception):
-    """Raised when a Gemini inference or session operation fails."""
+@dataclass
+class Session:
+    """One named conversation: its model and the committed history (prompts + final answers)."""
+
+    model: str
+    history: list[types.Content] = field(default_factory=list)
 
 
 class GeminiClient:
@@ -151,17 +163,17 @@ class GeminiClient:
             )
         self._is_vertex = api_key is None
         # Keyed by "{name}:{model}" — sessions are model-specific
-        self._sessions: OrderedDict[str, Chat] = OrderedDict()
+        self._sessions: OrderedDict[str, Session] = OrderedDict()
 
     def get_or_create_session(
         self,
         name: str = "default",
-        system_instruction: Optional[str] = None,
         model: Optional[str] = None,
-    ) -> Chat:
-        """Return existing chat session or create a new one (LRU-capped at _MAX_SESSIONS).
+    ) -> Session:
+        """Return existing session or create a new one (LRU-capped at _MAX_SESSIONS).
 
         Sessions are keyed by (name, model) — changing the model creates a new session.
+        Creating a session makes no API call.
         """
         effective_model = model or self.default_model
         _warn_model_backend_mismatch(effective_model, self._is_vertex)
@@ -169,10 +181,7 @@ class GeminiClient:
         if cache_key in self._sessions:
             self._sessions.move_to_end(cache_key)
             return self._sessions[cache_key]
-        cfg: Optional[GenerateContentConfig] = None
-        if system_instruction:
-            cfg = GenerateContentConfig(system_instruction=system_instruction)
-        session = self._raw_client.chats.create(model=effective_model, config=cfg)
+        session = Session(model=effective_model)
         self._sessions[cache_key] = session
         if len(self._sessions) > _MAX_SESSIONS:
             evicted, _ = self._sessions.popitem(last=False)
@@ -207,14 +216,32 @@ class GeminiClient:
             _log.error("models.list failed: %s", exc)
             raise ClientError(f"Failed to list models: {exc}") from exc
 
-    def _build_generation_config(
+    def build_config(
         self,
         thinking: ThinkingLevel,
         system_instruction: Optional[str] = None,
         model: Optional[str] = None,
+        declarations: Optional[list[types.FunctionDeclaration]] = None,
+        allow_tools: bool = True,
     ) -> GenerateContentConfig:
+        """Build the request config: thinking for the model family, system instruction, and —
+        when declarations are given — the tool set. SDK automatic function calling is always
+        disabled (the bridge runs its own loop). allow_tools=False keeps the declarations but
+        forbids calls."""
         effective_model = model or self.default_model
-        si = {"system_instruction": system_instruction} if system_instruction else {}
+        si: dict[str, Any] = {
+            "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True)
+        }
+        if system_instruction:
+            si["system_instruction"] = system_instruction
+        if declarations:
+            si["tools"] = [types.Tool(function_declarations=declarations)]
+            if not allow_tools:
+                si["tool_config"] = types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(
+                        mode=types.FunctionCallingConfigMode.NONE
+                    )
+                )
         family = _model_family(effective_model)
         if family == ModelFamily.GEMINI_2:
             budget = _THINKING_BUDGET_2X[thinking]
@@ -239,27 +266,21 @@ class GeminiClient:
             "Expected 'gemini-2.*' or 'gemini-3.*'. Check your model name."
         )
 
-    def ask(
+    # Kept for callers/tests written against the original name.
+    _build_generation_config = build_config
+
+    async def generate(
         self,
-        session: Chat,
-        prompt: str,
-        thinking: Optional[ThinkingLevel] = None,
-        system_instruction: Optional[str] = None,
-        model: Optional[str] = None,
-    ) -> str:
-        """Send prompt to chat session, return response text. Raises ClientError on failure."""
-        effective_thinking: ThinkingLevel = thinking or self._config.default_thinking
-        gen_config = self._build_generation_config(effective_thinking, system_instruction, model)
-        _log.debug(
-            "ask: model=%s thinking=%s prompt_len=%d",
-            model or self.default_model,
-            effective_thinking,
-            len(prompt),
-        )
+        model: str,
+        contents: list[types.Content],
+        config: GenerateContentConfig,
+    ) -> types.GenerateContentResponse:
+        """One generate_content request with retry/backoff on 503/429. Raises ClientError."""
         for attempt in range(1, _MAX_RETRIES + 2):
             try:
-                response = session.send_message(prompt, config=gen_config)
-                break
+                return await self._raw_client.aio.models.generate_content(
+                    model=model, contents=contents, config=config
+                )
             except Exception as exc:
                 is_last = attempt > _MAX_RETRIES
                 if not is_last and _is_retryable(exc):
@@ -271,25 +292,60 @@ class GeminiClient:
                         delay,
                         exc,
                     )
-                    time.sleep(delay)
-                else:
-                    suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
-                    _log.error("inference failed%s: %s", suffix, exc)
-                    hint = ""
-                    if _is_retryable(exc):
-                        hint = (
-                            " The model appears overloaded or quota-limited. "
-                            "Try again shortly, or pass a different model "
-                            "(e.g. model='gemini-3.1-flash-lite') to avoid the busy endpoint."
-                        )
-                    raise ClientError(f"Gemini inference failed{suffix}: {exc}{hint}") from exc
-        if not response.text:
-            finish_reason = "UNKNOWN"
-            try:
-                finish_reason = response.candidates[0].finish_reason.name
-            except Exception:
-                pass
-            _log.warning("Gemini returned no text (finish_reason=%s)", finish_reason)
-            raise ClientError(f"Gemini returned no text (finish_reason={finish_reason}).")
-        _log.debug("response_len=%d", len(response.text))
-        return response.text
+                    await asyncio.sleep(delay)
+                    continue
+                suffix = f" after {attempt} attempt(s)" if attempt > 1 else ""
+                _log.error("inference failed%s: %s", suffix, exc)
+                hint = ""
+                if _is_retryable(exc):
+                    hint = (
+                        " The model appears overloaded or quota-limited. "
+                        "Try again shortly, or pass a different model "
+                        "(e.g. model='gemini-3.1-flash-lite') to avoid the busy endpoint."
+                    )
+                raise ClientError(f"Gemini inference failed{suffix}: {exc}{hint}") from exc
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    async def ask(
+        self,
+        session: Session,
+        prompt: str,
+        thinking: Optional[ThinkingLevel] = None,
+        system_instruction: Optional[str] = None,
+        registry: Optional[ToolRegistry] = None,
+        records: Optional[list[ToolCallRecord]] = None,
+    ) -> str:
+        """Send prompt in the session's context and return the answer text.
+
+        With a non-empty `registry`, Gemini may call its tools; each executed call is appended
+        to `records` as it happens. Only [prompt, final answer] is committed to
+        session.history, and only on success. Raises ClientError.
+        """
+        effective_thinking: ThinkingLevel = thinking or self._config.default_thinking
+        declarations = registry.declarations if registry else None
+        _log.debug(
+            "ask: model=%s thinking=%s prompt_len=%d tools=%d",
+            session.model,
+            effective_thinking,
+            len(prompt),
+            len(declarations or []),
+        )
+
+        async def generate(
+            contents: list[types.Content], allow_tools: bool
+        ) -> types.GenerateContentResponse:
+            config = self.build_config(
+                effective_thinking, system_instruction, session.model, declarations, allow_tools
+            )
+            return await self.generate(session.model, contents, config)
+
+        user_content = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
+        result = await run_tool_loop(
+            generate,
+            [*session.history, user_content],
+            registry or ToolRegistry(),
+            records if records is not None else [],
+        )
+        session.history.extend([user_content, result.content])
+        _log.debug("response_len=%d", len(result.text))
+        return result.text

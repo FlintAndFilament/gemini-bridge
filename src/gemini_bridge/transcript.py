@@ -6,7 +6,8 @@ Append tool exchanges to a session transcript file in Markdown format.
 Responsibilities:
   - Determine the transcript file path from config.transcript_dir and startup timestamp
   - Create the transcript directory if it does not exist
-  - Append each exchange (tool name, thinking level, session, prompt, response) as Markdown
+  - Append each exchange (tool name, thinking level, session, prompt, tool calls, response)
+    as Markdown
   - Fail silently on write errors so a transcript failure never breaks a tool call
 
 Design notes:
@@ -22,6 +23,7 @@ Imports:  config.py (Config)
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -50,10 +52,13 @@ class TranscriptWriter:
         thinking: str,
         session: str = "default",
         timestamp: Optional[datetime] = None,
+        tool_calls: Sequence[str] = (),
     ) -> None:
-        """Append one exchange to the transcript. Never raises — write errors go to stderr."""
+        """Append one exchange to the transcript. Never raises — write errors go to stderr.
+
+        `tool_calls` are pre-rendered lines (one per file-tool call Gemini made)."""
         ts = timestamp or datetime.now()
-        block = _format_exchange(tool_name, prompt, response, thinking, session, ts)
+        block = _format_exchange(tool_name, prompt, response, thinking, session, ts, tool_calls)
         try:
             with self._path.open("a", encoding="utf-8") as fh:
                 fh.write(block)
@@ -68,11 +73,16 @@ def _format_exchange(
     thinking: str,
     session: str,
     timestamp: datetime,
+    tool_calls: Sequence[str] = (),
 ) -> str:
     ts_str = timestamp.strftime("%H:%M:%S")
+    calls = ""
+    if tool_calls:
+        calls = "**Tool calls:**\n" + "".join(f"- {line}\n" for line in tool_calls) + "\n"
     return (
         f"\n## [{ts_str}] {tool_name} — thinking: {thinking} | session: {session}\n\n"
         f"**Prompt:**\n{prompt}\n\n"
+        f"{calls}"
         f"**Response:**\n{response}\n\n"
         "---\n"
     )

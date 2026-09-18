@@ -15,6 +15,59 @@ The five inference tools share three optional parameters:
 
 ---
 
+## Repository access
+
+Gemini can inspect — and for some tools, write to — the repository Claude Code was launched in.
+Gemini never touches disk itself: it *requests* a tool call, and the bridge runs it locally
+inside a sandbox, then sends the result back. One MCP call can involve up to 20 such rounds.
+
+| Tool | Read tools | `write_file` | Saves answer as artifact |
+|---|---|---|---|
+| `gemini_ask` | ✅ | — | — |
+| `gemini_debug` | ✅ | — | — |
+| `gemini_brainstorm` | ✅ | ✅ | opt-in (`write_artifact=true`) |
+| `gemini_architect` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
+| `gemini_review` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
+
+**Tools Gemini can call** (paths are relative to the repo root):
+
+| Tool | Does | Cap |
+|---|---|---|
+| `list_dir(path=".")` | Directory entries with type and size | 500 entries |
+| `glob(pattern)` | Files matching a glob; `**/` spans directories, `*` stays in one | 500 results |
+| `grep(pattern, path=".", glob=None)` | Python-regex search; returns path, line number, text | 200 matches; 5,000 files / 20 MiB scanned |
+| `read_file(path, offset=0, limit=None)` | Text file contents, pageable by line | 256 KiB per call |
+| `write_file(path, content)` | Create or overwrite a text file (parents created) | `max_write_bytes` (256 KiB) |
+
+**Sandbox rules:**
+- Every path is fully resolved (symlinks followed, `..` collapsed) and must stay inside the root —
+  traversal, absolute paths elsewhere, and symlink escapes are rejected.
+- The deny-list (`.git/**`, `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`,
+  `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `*credentials*.json`, `*-sa-key.json`, `.ssh/**`,
+  `.aws/**`, `.gnupg/**`, `.netrc`, `.npmrc`, `.pypirc`) is checked case-insensitively, **at any
+  depth** (so a nested `vendor/x/.git/` is covered), on both the requested and the resolved path.
+- File tools switch themselves off when Claude Code is launched from your home directory, the
+  filesystem root, or any folder containing your home directory. The startup log says why.
+- `grep` stops after 10 seconds, so a pathological regex returns `timed_out` instead of hanging
+  the call.
+- Searches skip `.venv`, `venv`, `node_modules`, `__pycache__`, `dist`, `build`, and tool caches, and
+  never follow symlinked directories. Those folders are still readable by direct path.
+- Writes are atomic, keep the file's existing permissions (e.g. an executable script stays
+  executable), and replace a symlink at the target rather than writing through it. There is no
+  delete, rename, chmod, or execute — nothing in the bridge spawns a process.
+- If the model is overloaded (503/429) **after** Gemini has written a file during the call, the
+  bridge returns an error instead of re-running the call on the fallback model, so writes are
+  never replayed.
+- Every call, including rejections, is listed under **Tool calls** in the transcript entry.
+
+**Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`) as
+`YYYYMMDD-HHMM-<tool>-<topic-slug>.md`, with a header naming the tool, model, session, and time.
+The reply ends with `[gemini-bridge] artifact saved: <path>`. If saving fails you still get the
+answer, plus a `[gemini-bridge notice] artifact not saved: …` line. Artifacts are saved even when
+`file_tools.enabled` is `false`.
+
+---
+
 ## gemini_ask
 
 **Persona:** Direct, precise technical assistant. No specialized persona — use when no other tool fits.
@@ -60,6 +113,7 @@ gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
 | `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `write_artifact` | bool | no | Save the ideas to `artifacts_dir` (default `false`) |
 
 **When to use:**
 - Design decisions where you want a second take
@@ -93,6 +147,7 @@ gemini_brainstorm(
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
 | `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
 - Code review before merging
@@ -160,6 +215,7 @@ gemini_debug(
 | `thinking` | string | no | Reasoning depth (use `high` for complex systems) |
 | `session_name` | string | no | Session identifier |
 | `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
 - Choosing between architectural patterns

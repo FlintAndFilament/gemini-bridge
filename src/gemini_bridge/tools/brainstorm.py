@@ -26,6 +26,7 @@ from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 _SYSTEM_PROMPT = (
     "You are a creative thinking partner working alongside Claude, another AI. "
@@ -35,14 +36,21 @@ _SYSTEM_PROMPT = (
 )
 
 _TOOL_NAME = "gemini_brainstorm"
+# Capability row (#68): read + write_file.
+_WRITE = True
 
 
-def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:
+def register(
+    mcp: FastMCP,
+    client: GeminiClient,
+    transcript: TranscriptWriter,
+    workspace: Optional[Workspace] = None,
+) -> None:
     """Register gemini_brainstorm with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_brainstorm(
+    async def gemini_brainstorm(
         topic: Annotated[str, Field(description="The topic or problem to brainstorm about")],
         context: Annotated[
             str,
@@ -60,11 +68,20 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             str, Field(description="Session name for conversation continuity.")
         ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
+        write_artifact: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Save the response as a timestamped Markdown file in the artifacts "
+                    "directory (default false). Set true to keep the ideas."
+                )
+            ),
+        ] = False,
     ) -> ToolResult:
         """Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the
         current direction and play devil's advocate."""
         full_prompt = topic if not context else f"{topic}\n\nContext: {context}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,
@@ -73,4 +90,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             prompt=full_prompt,
             thinking=thinking,
             model=model,
+            workspace=workspace,
+            write=_WRITE,
+            artifact_topic=(topic) if write_artifact else None,
         )

@@ -139,3 +139,32 @@ def test_config_location_defaults_to_global() -> None:
 def test_config_location_override_accepted() -> None:
     cfg = Config(project="p", location="us-central1")
     assert cfg.location == "us-central1"
+
+
+def test_file_tools_defaults() -> None:
+    from gemini_bridge.sandbox import DEFAULT_DENY
+
+    cfg = Config(auth={"method": "api_key"})
+    assert cfg.artifacts_dir == "./gemini-artifacts"
+    assert cfg.file_tools.enabled is True
+    assert cfg.file_tools.deny == list(DEFAULT_DENY)
+    assert cfg.file_tools.max_write_bytes == 262144
+
+
+def test_file_tools_overrides() -> None:
+    cfg = Config(
+        auth={"method": "api_key"},
+        artifacts_dir="out",
+        file_tools={"enabled": False, "deny": ["*.secret"], "max_write_bytes": 10},
+    )
+    assert cfg.artifacts_dir == "out"
+    assert cfg.file_tools.enabled is False
+    assert cfg.file_tools.deny == ["*.secret"]
+    assert cfg.file_tools.max_write_bytes == 10
+
+
+def test_file_tools_rejects_nonpositive_write_cap() -> None:
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        Config(auth={"method": "api_key"}, file_tools={"max_write_bytes": 0})

@@ -26,6 +26,7 @@ from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 _SYSTEM_PROMPT = (
     "You are a systematic debugging assistant working alongside Claude, another AI. "
@@ -34,14 +35,21 @@ _SYSTEM_PROMPT = (
 )
 
 _TOOL_NAME = "gemini_debug"
+# Capability row (#68): read-only: findings go back to Claude, not to disk.
+_WRITE = False
 
 
-def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:
+def register(
+    mcp: FastMCP,
+    client: GeminiClient,
+    transcript: TranscriptWriter,
+    workspace: Optional[Workspace] = None,
+) -> None:
     """Register gemini_debug with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_debug(
+    async def gemini_debug(
         error: Annotated[
             str, Field(description="The error message, stack trace, or failure description")
         ],
@@ -65,7 +73,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         """Ask Gemini for root cause hypotheses and diagnostic steps. Provide the error
         and any relevant context (code, recent changes, environment)."""
         full_prompt = error if not context else f"{error}\n\nContext:\n{context}"
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,
@@ -74,4 +82,6 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             prompt=full_prompt,
             thinking=thinking,
             model=model,
+            workspace=workspace,
+            write=_WRITE,
         )
