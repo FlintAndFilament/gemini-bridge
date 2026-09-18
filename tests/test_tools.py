@@ -552,3 +552,45 @@ class TestFallbackAfterTools:
         result, log = await self._run(tmp_path, "read_file", {"path": "a.py"})
         assert "fb" in result and "[gemini-bridge notice]" in result
         assert "retried on fallback model" in log
+
+
+class TestResolvedFallback:
+    async def test_fallback_uses_resolved_flash_lite(self, tmp_path: Path) -> None:
+        from types import SimpleNamespace
+
+        client = _make_client_api_key()
+        client._raw_client.models.list.return_value = [
+            SimpleNamespace(name=f"models/{i}")
+            for i in ("gemini-3.8-flash", "gemini-3.5-flash-lite")
+        ]
+        client.refresh_latest()
+        busy = Exception("503 UNAVAILABLE")
+        gen = _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fb")])
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+            result = await call_gemini(
+                client=client,
+                transcript=_make_transcript(tmp_path),
+                tool_name="gemini_ask",
+                session_name="default",
+                system_instruction="A.",
+                prompt="q",
+                thinking="low",
+            )
+        assert "Model 'gemini-3.8-flash' was unavailable" in result
+        assert "fallback model 'gemini-3.5-flash-lite'" in result
+        assert gen.call_args.kwargs["model"] == "gemini-3.5-flash-lite"
+
+    async def test_alias_request_is_named_concretely(self, tmp_path: Path) -> None:
+        client = _make_client_api_key()
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        await call_gemini(
+            client=client,
+            transcript=_make_transcript(tmp_path),
+            tool_name="gemini_ask",
+            session_name="default",
+            system_instruction="A.",
+            prompt="q",
+            thinking="low",
+            model="pro",
+        )
+        assert gen.call_args.kwargs["model"] == "gemini-3.1-pro-preview"

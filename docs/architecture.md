@@ -36,12 +36,14 @@ directly. Both consult `models.py` — the single source of truth for the model 
 1. Claude Code sends an MCP tool call (e.g. `gemini_brainstorm`) with an optional `model=`
 2. `server.py` routes to the registered tool function in `tools/brainstorm.py`
 3. Tool calls `call_gemini()` from `tools/base.py` with the session name, system prompt, and prompt
-4. `call_gemini()` resolves the effective model (`model` or `DEFAULT_MODEL`) and calls
-   `client.get_or_create_session()` — one session per `tool:session_name:model`
-5. `client.ask()` builds a `GenerateContentConfig` with the thinking level and sends to the
-   active backend (Developer API or Vertex AI)
-6. On a terminal 503/429, `call_gemini()` retries once against `FALLBACK_MODEL` and prepends a
-   disclosure notice to the response
+4. `call_gemini()` asks `client.resolve_model()` for the concrete model — the per-call `model`,
+   else `default_model`, else the newest Flash; aliases (`flash` / `flash-lite` / `pro`,
+   `*-latest`) map to the newest release resolved at startup — and calls
+   `client.get_or_create_session()`, one session per `tool:session_name:concrete-model`
+5. `client.ask()` builds a `GenerateContentConfig` with the thinking parameter for that model's
+   generation (adapting if the model rejects a level) and sends to the active backend
+6. On a terminal 503/429, `call_gemini()` retries once on the newest Flash-Lite
+   (`client.fallback_model`) and prepends a disclosure notice to the response
 7. `transcript.append()` writes the exchange to the Markdown file
 8. Tool returns the response string as the MCP tool result to Claude Code
 
@@ -58,10 +60,10 @@ sequenceDiagram
     B->>C: get_or_create_session(tool:name:model)
     B->>C: ask(prompt, thinking, model)
     C->>G: send_message (with GenerateContentConfig)
-    alt 503/429 after retries and model != FALLBACK_MODEL
+    alt 503/429 after retries and model != fallback model
         G-->>C: terminal error
-        B->>C: ask(prompt, thinking, FALLBACK_MODEL)
-        C->>G: retry on gemini-3.1-flash-lite
+        B->>C: ask(prompt, thinking, fallback model)
+        C->>G: retry on the newest Flash-Lite
         G-->>C: response
         B-->>T: notice + response
     else success

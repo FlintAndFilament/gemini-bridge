@@ -23,9 +23,10 @@ Created by `bash setup.sh`. Safe to edit by hand.
 }
 ```
 
-> **Model selection:** set the optional `default_model` field to change the server default; leave
-> it unset for the built-in default (`gemini-3.5-flash`). Individual calls always override it
-> **per call** via the `model=` parameter. See [Choosing a model](#choosing-a-model).
+> **Model selection:** leave `default_model` unset to always get the newest Flash (resolved at
+> startup), set it to `flash` / `flash-lite` / `pro` to track a family, or to a concrete id to pin
+> one. Individual calls always override it **per call** via `model=`. See
+> [Choosing a model](#choosing-a-model).
 
 ## Field reference
 
@@ -64,11 +65,12 @@ your chosen model is offered there; a model not served in your region returns a 
 ### `default_model`
 
 **Type:** string (optional)
-**Default:** unset → the built-in default (`gemini-3.5-flash`)
+**Default:** unset → the newest Flash, resolved from the live model list at startup
 
-Sets the default model for tool calls that omit the `model` parameter. Leave it unset to use the
-server's built-in default. Individual calls always override it via `model=`. Accepts any model the
-bridge can run (`gemini-2*` / `gemini-3*` or a `-latest` alias); an invalid value raises a
+Sets the default model for tool calls that omit the `model` parameter. Accepts an alias
+(`flash` / `flash-lite` / `pro`, or Google's `-latest` names) to track the newest release of a
+family, or a concrete id (e.g. `"gemini-3.5-flash"`) to pin one. Individual calls always override
+it via `model=`. Any other value the bridge can't run raises a
 `ClientError` at call time (there is no config-load validation yet — see #44). The backend-aware
 schema hint and `gemini_list_models` reflect the effective default. See
 [Choosing a model](#choosing-a-model).
@@ -197,52 +199,73 @@ If both are set in your shell, `GOOGLE_API_KEY` takes precedence in the SDK.
 
 ## Choosing a model
 
-Every tool accepts an optional `model=` parameter; omit it to use the server default.
+Every tool accepts an optional `model=` parameter.
 
-- **Default:** the `default_model` config field if set, else the built-in `gemini-3.5-flash`
-  (`DEFAULT_MODEL`) — this effective default is what omitted-`model` calls use.
-- **Fallback:** if the requested/default model returns a terminal overload (503/429) after
-  retries, the call is retried once against `gemini-3.1-flash-lite` (`FALLBACK_MODEL`) and the
-  response is prefixed with a visible `[gemini-bridge notice]` so the substitution is never silent.
-- **Discovery:** the `model` parameter's description is **backend-aware** (it lists the models
-  valid for your active backend), and the `gemini_list_models` tool returns the live, chat-only
-  catalog. See [tools.md](tools.md#gemini_list_models).
+| You pass | You get |
+|---|---|
+| *(nothing)* | `default_model` if set, else the **newest Flash** |
+| `flash` · `flash-lite` · `pro` | the newest release of that family |
+| `gemini-flash-latest` · `gemini-flash-lite-latest` · `gemini-pro-latest` | same as the short alias; translated by the bridge, so they work on **both** backends |
+| a concrete id, e.g. `gemini-3.5-flash` | exactly that model, never rewritten |
 
-### Recommended models by backend
+- **How "newest" is found:** once at startup the bridge reads the live model list and, per family,
+  takes the highest `gemini-<major>.<minor>-<family>` version (compared numerically, so 3.10 beats
+  3.8). At the same version a GA model beats its `-preview`; a newer preview beats an older GA —
+  which is how `pro` currently resolves to `gemini-3.1-pro-preview` (no newer GA Pro exists).
+  Specialized variants (`-customtools`, `-tts`, `-image`, dated builds) are never chosen. The
+  result matches Google's own `-latest` aliases (verified live 2026-09-17). Restart the MCP
+  server to pick up a new release; the choice never changes mid-session.
+- **Fallback:** on a terminal overload (503/429) after retries, the call is retried once on the
+  newest Flash-Lite and the response is prefixed with a visible `[gemini-bridge notice]`. If
+  Gemini already wrote a file during that call, it is not retried (writes are never replayed).
+- **Offline:** if the model list can't be read at startup, the pinned defaults are used —
+  `gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`, Pro `gemini-3.1-pro-preview` — and a
+  warning is logged.
+- **Visibility:** the startup log line names `default_model` and `fallback_model` as concrete ids
+  plus the resolved `flash=… flash-lite=… pro=…`; transcripts and artifacts record the concrete
+  model. `gemini_list_models` marks `(default)` and `(latest <family>)`.
 
-| Backend (`auth.method`) | Recommended | Notes |
+### Thinking levels per model
+
+The `thinking` level (`none` / `low` / `medium` / `high`) maps to a different API parameter per
+generation, decided from the **concrete** model id (never an alias):
+
+| Generation | API parameter | `none` / `low` / `medium` / `high` |
 |---|---|---|
-| **Developer API** (`api_key`) | `gemini-3.5-flash` (default), `gemini-3.1-flash-lite`, `gemini-flash-latest`, `gemini-pro-latest` | `-latest` aliases auto-track the newest release |
-| **Vertex AI** (`adc`/`env`/`keychain`) | `gemini-3.5-flash` (default), `gemini-3.1-flash-lite`, `gemini-3.1-pro-preview`, `gemini-2.5-pro` | No `-latest` aliases — they 404 on Vertex; use versioned names |
+| Gemini 2.x | `thinking_budget` | 0 / 1024 / 8192 / 32768 tokens (Pro models: minimum 128) |
+| Gemini 3 and later | `thinking_level` | `MINIMAL` / `LOW` / `MEDIUM` / `HIGH` |
 
-> **Gemini 2.5 retires 2026-10-16.** The shortlists above lead with the long-lived Gemini 3.x GA
-> models. `gemini-2.5-flash`/`-pro` still work (and appear in `gemini_list_models`) until then;
-> `gemini-2.5-pro` is kept as the Vertex stable-Pro option until it retires.
+Some models reject specific values. The bridge adapts automatically, retries once, remembers the
+adjustment for that model for the rest of the process, and logs a warning:
 
-The `-latest` aliases (e.g. `gemini-flash-latest`) are a **Developer-API-only** convention.
-On Vertex AI they return 404 — the bridge logs a warning if you pass one under a Vertex backend.
+| API rejection (verbatim) | Bridge response | Seen on (2026-09-17) |
+|---|---|---|
+| `Thinking level MINIMAL is not supported for this model` | step **up** to the next level (`MINIMAL` → `LOW`) | `gemini-3.8-flash`, `gemini-3.1-pro-preview` |
+| `Thinking level is not supported for this model` | switch that model to `thinking_budget` | `gemini-2.5-flash` |
+| `Budget 0 is invalid. This model only works in thinking mode.` | raise that model's budget floor to 128 | `gemini-3.1-pro-preview`, `gemini-3.5-flash-lite` |
 
-> **Model families and thinking levels:** the generation prefix determines how the `thinking`
-> level maps to API parameters — `gemini-2*` (and `-latest` aliases) use a token `thinking_budget`;
-> `gemini-3*` uses a `thinking_level` enum. Both dotted (`gemini-3.5-flash`) and hyphenated
-> preview (`gemini-3-pro-preview`) forms are recognized, so previews are usable. An unrecognized
-> name raises a `ClientError` at call time. See [tools.md](tools.md) for the thinking-level table.
+Adjustments only ever go **up** in cost, so `thinking="none"` means "the cheapest level this
+model accepts". An unrecognized model name raises a `ClientError` at call time.
+
+> **Gemini 2.5 retires 2026-10-16.** `gemini-2.5-pro` already returns 404 on the Developer API for
+> new users. The resolver never selects 2.5 while a 3.x model exists.
 
 ### How a model value is resolved
 
 ```mermaid
 flowchart TD
     A[Tool call] --> B{model= provided?}
-    B -->|yes| C[use requested model]
-    B -->|no| D["use effective default<br/>default_model or gemini-3.5-flash"]
-    C --> E{auth.method}
-    D --> E
-    E -->|api_key| F[Developer API<br/>aliases OK]
-    E -->|adc / env / keychain| G[Vertex AI<br/>versioned names]
-    F --> H[send request]
+    B -->|yes| C{alias?<br/>flash / flash-lite / pro / *-latest}
+    B -->|no| D{default_model set?}
+    D -->|yes| C
+    D -->|no| F[newest Flash]
+    C -->|yes| E[newest of that family<br/>pinned id if list unreadable]
+    C -->|no| G[concrete id as given]
+    E --> H[choose thinking parameter<br/>from concrete id]
+    F --> H
     G --> H
     H --> I{503 / 429 after retries?}
     I -->|no| J[return response]
-    I -->|yes, and model != fallback| K[retry once on<br/>gemini-3.1-flash-lite]
+    I -->|yes, model != fallback,<br/>no files written| K[retry once on<br/>newest Flash-Lite]
     K --> L[return response<br/>+ notice]
 ```

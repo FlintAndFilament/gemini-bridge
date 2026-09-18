@@ -54,11 +54,11 @@ sequenceDiagram
     participant G as Gemini API<br/>(Developer API or Vertex AI)
 
     CC->>S: gemini_ask(prompt, thinking?, model?)
-    Note over S: model = requested model<br/>or DEFAULT_MODEL (gemini-3.5-flash)
+    Note over S: model = requested model or alias → newest release<br/>or default_model or newest Flash
     S->>G: send to chosen model
     alt model overloaded (503/429)
         G-->>S: terminal error
-        S->>G: retry once on FALLBACK_MODEL (gemini-3.1-flash-lite)
+        S->>G: retry once on the newest Flash-Lite
         G-->>S: response
         Note over S: prepend "[gemini-bridge notice]" disclosure
     else success
@@ -110,7 +110,7 @@ claude mcp list
 Restart Claude Code after step 3. On next start you'll see startup entries in the log:
 
 ```
-[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.5-flash
+[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
 [gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: transcript → ~/session-summaries/20260702-1750-gemini-bridge-transcript.md
 ```
 
@@ -125,7 +125,7 @@ Restart Claude Code after step 3. On next start you'll see startup entries in th
 | `project` | — | GCP project ID (required for `adc`/`env`/`keychain`; omit for `api_key`) |
 | `location` | `global` | Vertex AI location; `global` is recommended and works for all models; omit for `api_key` |
 | `default_thinking` | `medium` | Thinking level when omitted per call |
-| `default_model` | *(built-in)* | Default Gemini model for calls that omit `model=`. Unset → built-in `gemini-3.5-flash`. Per-call `model=` always overrides |
+| `default_model` | *(newest Flash)* | Model for calls that omit `model=`: an alias (`flash` / `flash-lite` / `pro`) or a concrete id. Unset → newest Flash, resolved at startup. Per-call `model=` always overrides |
 | `transcript_dir` | `./session-summaries` | Transcript directory; relative paths resolve to the project root where Claude Code was launched |
 | `artifacts_dir` | `./gemini-artifacts` | Where architect/review (and opted-in brainstorm) answers are saved; must be inside the project root |
 | `file_tools.enabled` | `true` | Kill switch for Gemini's repository access |
@@ -136,9 +136,9 @@ Restart Claude Code after step 3. On next start you'll see startup entries in th
 | `auth.keychain_account` | `vertex-sa` | Keychain account name (`keychain` only) |
 | `auth.api_key_env` | `GEMINI_API_KEY` | Env var name holding the AI Studio key (`api_key` only; key is never stored in config) |
 
-> **Note:** Set `default_model` to change the server's default model; leave it unset to use the
-> built-in default (`gemini-3.5-flash`). Individual calls always override it **per call** via the
-> `model=` parameter on any tool. See [Choosing a model](#choosing-a-model).
+> **Note:** Leave `default_model` unset to always get the newest Flash, set it to an alias
+> (`flash` / `flash-lite` / `pro`) to track a family, or to a concrete id to pin one. Individual
+> calls always override it **per call** via `model=`. See [Choosing a model](#choosing-a-model).
 
 See [docs/configuration.md](docs/configuration.md) for the full field reference.
 
@@ -146,23 +146,27 @@ See [docs/configuration.md](docs/configuration.md) for the full field reference.
 
 ## Choosing a model
 
-Every tool accepts an optional `model=` parameter. Omit it to use the server default — the
-`default_model` config field if set, otherwise the built-in `gemini-3.5-flash` — which
-transparently falls back to `gemini-3.1-flash-lite` if the endpoint is overloaded (503/429), with
-a visible notice in the response.
+Every tool accepts an optional `model=` parameter. **Omit it and you get the newest Flash** — the
+bridge reads the live model list once at startup and picks the highest version (e.g.
+`gemini-3.8-flash`), so a new Gemini release is picked up by restarting the MCP server, with no
+code or config change.
 
-The recommended set is **backend-aware** — the `model` parameter's description adapts to your
-active backend, and `gemini_list_models` returns the live, chat-only catalog:
+| You pass | You get |
+|---|---|
+| *(nothing)* | `default_model` from config if set, else the newest Flash |
+| `flash` · `flash-lite` · `pro` | the newest release of that family (`pro` may be a preview when no GA Pro is newer) |
+| `gemini-flash-latest` · `gemini-flash-lite-latest` · `gemini-pro-latest` | same as the short alias — translated by the bridge, so they also work on **Vertex AI** |
+| a concrete id, e.g. `gemini-3.5-flash` | exactly that model, never rewritten |
 
-| Backend (`auth.method`) | Recommended models | `-latest` aliases |
-|---|---|---|
-| **Developer API** (`api_key`) | `gemini-3.5-flash` (default), `gemini-3.1-flash-lite`, `gemini-flash-latest`, `gemini-pro-latest` | ✅ supported |
-| **Vertex AI** (`adc`/`env`/`keychain`) | `gemini-3.5-flash` (default), `gemini-3.1-flash-lite`, `gemini-3.1-pro-preview`, `gemini-2.5-pro` | ❌ 404 on Vertex — use versioned names |
-
-`-latest` aliases (e.g. `gemini-flash-latest`) are a **Developer-API-only** convention; they
-return 404 on Vertex AI. Call `gemini_list_models` any time for the authoritative list scoped to
-your backend. See [docs/configuration.md](docs/configuration.md#choosing-a-model) and
-[docs/tools.md](docs/tools.md#gemini_list_models).
+- **Fallback:** on a terminal overload (503/429) the call is retried once on the newest
+  Flash-Lite, with a visible `[gemini-bridge notice]`.
+- **Offline:** if the model list can't be read at startup, the bridge uses pinned known-good
+  defaults (`gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`) and logs a warning.
+- **Visibility:** the startup log, transcripts, and artifacts always name the concrete model
+  (never an alias). `gemini_list_models` marks the default and the newest model per family.
+- **Thinking levels:** the bridge picks the right API parameter per model and adapts when a
+  model rejects a level (e.g. `gemini-3.8-flash` refuses the lowest level, so `thinking="none"`
+  steps up to `low`). See [docs/configuration.md](docs/configuration.md#choosing-a-model).
 
 ---
 
