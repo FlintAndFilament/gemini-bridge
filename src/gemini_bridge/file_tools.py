@@ -182,7 +182,10 @@ class FileTools:
             raise ValueError(f"binary file: {path}")
         lines = data.decode("utf-8", "replace").splitlines(keepends=True)
         end = offset + limit if limit is not None else None
-        content = "".join(lines[offset:end])
+        # Numbered like `cat -n` so Gemini can cite exact lines instead of counting them.
+        content = "".join(
+            f"{n:>6}\t{line}" for n, line in enumerate(lines[offset:end], start=offset + 1)
+        )
         truncated = False
         encoded = content.encode()
         if len(encoded) > READ_MAX_BYTES:
@@ -257,8 +260,10 @@ _READ_DECLARATIONS: list[tuple[str, str, dict[str, Any]]] = [
     ),
     (
         "read_file",
-        f"Read a text file. {_PATH_NOTE} Returns up to {READ_MAX_BYTES // 1024} KiB; page "
-        "through larger files with offset (0-based line) and limit (line count).",
+        f"Read a text file. {_PATH_NOTE} Each line is prefixed with its 1-based line number and "
+        "a tab — cite these numbers, but never copy the prefixes into write_file content. "
+        f"Returns up to {READ_MAX_BYTES // 1024} KiB; page through larger files with offset "
+        "(0-based line) and limit (line count).",
         _schema(
             {
                 "path": {"type": "string"},

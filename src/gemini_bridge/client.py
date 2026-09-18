@@ -225,15 +225,17 @@ class GeminiClient:
         allow_tools: bool = True,
     ) -> GenerateContentConfig:
         """Build the request config: thinking for the model family, system instruction, and —
-        when declarations are given — the tool set with SDK automatic calling disabled (the
-        bridge runs its own loop). allow_tools=False keeps the declarations but forbids calls."""
+        when declarations are given — the tool set. SDK automatic function calling is always
+        disabled (the bridge runs its own loop). allow_tools=False keeps the declarations but
+        forbids calls."""
         effective_model = model or self.default_model
-        si: dict[str, Any] = (
-            {"system_instruction": system_instruction} if system_instruction else {}
-        )
+        si: dict[str, Any] = {
+            "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True)
+        }
+        if system_instruction:
+            si["system_instruction"] = system_instruction
         if declarations:
             si["tools"] = [types.Tool(function_declarations=declarations)]
-            si["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
             if not allow_tools:
                 si["tool_config"] = types.ToolConfig(
                     function_calling_config=types.FunctionCallingConfig(

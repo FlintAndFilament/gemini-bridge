@@ -117,12 +117,12 @@ class TestGrep:
 class TestReadFile:
     def test_reads_full(self, tools: FileTools) -> None:
         out = tools.read_file("src/main.py")
-        assert out["content"] == "def main():\n    return 1\n"
+        assert out["content"] == "     1\tdef main():\n     2\t    return 1\n"
         assert out["start_line"] == 1 and out["total_lines"] == 2 and out["truncated"] is False
 
     def test_offset_and_limit(self, tools: FileTools) -> None:
         out = tools.read_file("src/pkg/util.py", offset=2, limit=1)
-        assert out["content"] == "def helper():\n"
+        assert out["content"] == "     3\tdef helper():\n"
         assert out["start_line"] == 3 and out["total_lines"] == 4
 
     def test_binary_rejected(self, tools: FileTools, repo: Path) -> None:
@@ -180,7 +180,7 @@ class TestRegistry:
     async def test_dispatch_success(self, tools: FileTools) -> None:
         reg = build_file_registry(tools, write=False)
         out = await reg.dispatch("read_file", {"path": "top.py"})
-        assert out["content"] == "x = 1\n"
+        assert out["content"] == "     1\tx = 1\n"
 
     async def test_dispatch_sandbox_rejection_is_error_dict(self, tools: FileTools) -> None:
         reg = build_file_registry(tools, write=False)

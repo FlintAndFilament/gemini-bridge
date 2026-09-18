@@ -363,6 +363,11 @@ class TestAskWithTools:
         cfg = _make_client().build_config("low")
         assert cfg.tools is None and cfg.tool_config is None
 
+    def test_build_config_always_disables_sdk_afc(self) -> None:
+        # The bridge runs its own loop; SDK AFC must never engage (and never log its warning).
+        cfg = _make_client().build_config("low")
+        assert cfg.automatic_function_calling.disable is True  # type: ignore[union-attr]
+
     def test_build_config_allow_tools_false_sets_mode_none(self) -> None:
         decl = types.FunctionDeclaration(name="t", description="d")
         cfg = _make_client().build_config("low", declarations=[decl], allow_tools=False)
