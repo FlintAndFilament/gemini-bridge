@@ -27,6 +27,7 @@ from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
 from gemini_bridge.transcript import TranscriptWriter
+from gemini_bridge.workspace import Workspace
 
 _SYSTEM_PROMPT = (
     "You are a knowledgeable technical assistant working alongside Claude, another AI. "
@@ -34,14 +35,21 @@ _SYSTEM_PROMPT = (
 )
 
 _TOOL_NAME = "gemini_ask"
+# Capability row (#68): read-only: findings go back to Claude, not to disk.
+_WRITE = False
 
 
-def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:
+def register(
+    mcp: FastMCP,
+    client: GeminiClient,
+    transcript: TranscriptWriter,
+    workspace: Optional[Workspace] = None,
+) -> None:
     """Register gemini_ask with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool()
-    def gemini_ask(
+    async def gemini_ask(
         prompt: Annotated[str, Field(description="The question or request to send to Gemini")],
         thinking: Annotated[
             Optional[ThinkingLevel],
@@ -56,7 +64,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
     ) -> ToolResult:
         """Ask Gemini a general question. Use when no other specialized tool fits."""
-        return call_gemini(
+        return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,
@@ -65,4 +73,6 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             prompt=prompt,
             thinking=thinking,
             model=model,
+            workspace=workspace,
+            write=_WRITE,
         )

@@ -1,10 +1,17 @@
 """Tests for gemini_bridge/client.py — GeminiClient session management and ask()."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from google.genai import types
 
-from gemini_bridge.client import _MAX_SESSIONS, DEFAULT_MODEL, ClientError, GeminiClient
+from gemini_bridge.client import (
+    _MAX_SESSIONS,
+    DEFAULT_MODEL,
+    ClientError,
+    GeminiClient,
+    Session,
+)
 from gemini_bridge.config import Config
 
 
@@ -15,48 +22,59 @@ def _make_client() -> GeminiClient:
         return GeminiClient(config, mock_creds)
 
 
+def _text_response(text: str, finish: str = "STOP") -> types.GenerateContentResponse:
+    parts = [types.Part.from_text(text=text)] if text else []
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(role="model", parts=parts),
+                finish_reason=types.FinishReason(finish),
+            )
+        ]
+    )
+
+
+def _mock_generate(client: GeminiClient, **kwargs: object) -> AsyncMock:
+    mock = AsyncMock(**kwargs)
+    client._raw_client.aio.models.generate_content = mock
+    return mock
+
+
 class TestSessionManagement:
     def test_get_or_create_session_creates_new(self) -> None:
         client = _make_client()
-        mock_chat = MagicMock()
-        client._raw_client.chats.create.return_value = mock_chat
-
-        session = client.get_or_create_session("default", "You are helpful.")
-        assert session is mock_chat
-        client._raw_client.chats.create.assert_called_once()
+        session = client.get_or_create_session("default")
+        assert isinstance(session, Session)
+        assert session.model == DEFAULT_MODEL
+        assert session.history == []
 
     def test_get_or_create_session_returns_existing(self) -> None:
         client = _make_client()
-        mock_chat = MagicMock()
-        client._raw_client.chats.create.return_value = mock_chat
-
         s1 = client.get_or_create_session("default")
         s2 = client.get_or_create_session("default")
         assert s1 is s2
-        client._raw_client.chats.create.assert_called_once()
 
     def test_different_session_names_create_separate_sessions(self) -> None:
         client = _make_client()
-        chat_a, chat_b = MagicMock(), MagicMock()
-        client._raw_client.chats.create.side_effect = [chat_a, chat_b]
-
         sa = client.get_or_create_session("ask:default")
         sb = client.get_or_create_session("brainstorm:default")
         assert sa is not sb
 
     def test_different_models_create_separate_sessions(self) -> None:
         client = _make_client()
-        chat_a, chat_b = MagicMock(), MagicMock()
-        client._raw_client.chats.create.side_effect = [chat_a, chat_b]
-
         sa = client.get_or_create_session("ask:default", model="gemini-2.5-flash")
         sb = client.get_or_create_session("ask:default", model="gemini-2.5-pro")
         assert sa is not sb
+        assert sb.model == "gemini-2.5-pro"
+
+    def test_session_creation_makes_no_api_call(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(client)
+        client.get_or_create_session("default")
+        gen.assert_not_awaited()
 
     def test_session_cache_evicts_oldest_when_full(self) -> None:
         client = _make_client()
-        client._raw_client.chats.create.return_value = MagicMock()
-
         for i in range(_MAX_SESSIONS + 1):
             client.get_or_create_session(f"session:{i}")
 
@@ -121,100 +139,123 @@ class TestThinkingConfig:
 
 
 class TestAsk:
-    def test_ask_returns_response_text(self) -> None:
+    async def test_ask_returns_response_text(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "Gemini response"
-        mock_session.send_message.return_value = mock_response
+        _mock_generate(client, return_value=_text_response("Gemini response"))
+        session = client.get_or_create_session()
 
-        result = client.ask(mock_session, "Hello", "low")
+        result = await client.ask(session, "Hello", "low")
         assert result == "Gemini response"
 
-    def test_ask_raises_client_error_on_empty_response(self) -> None:
+    async def test_ask_raises_client_error_on_empty_response(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = ""
-        mock_response.candidates[0].finish_reason.name = "SAFETY"
-        mock_session.send_message.return_value = mock_response
+        _mock_generate(client, return_value=_text_response("", finish="SAFETY"))
+        session = client.get_or_create_session()
 
         with pytest.raises(ClientError, match="finish_reason=SAFETY"):
-            client.ask(mock_session, "Hello", "low")
+            await client.ask(session, "Hello", "low")
 
-    def test_ask_empty_response_unknown_finish_reason(self) -> None:
+    async def test_ask_empty_response_unknown_finish_reason(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = ""
-        mock_response.candidates = []
-        mock_session.send_message.return_value = mock_response
+        _mock_generate(client, return_value=types.GenerateContentResponse(candidates=[]))
+        session = client.get_or_create_session()
 
         with pytest.raises(ClientError, match="finish_reason=UNKNOWN"):
-            client.ask(mock_session, "Hello", "low")
+            await client.ask(session, "Hello", "low")
 
-    def test_ask_raises_client_error_on_exception(self) -> None:
+    async def test_ask_raises_client_error_on_exception(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_session.send_message.side_effect = RuntimeError("API error")
+        _mock_generate(client, side_effect=RuntimeError("API error"))
+        session = client.get_or_create_session()
 
         with pytest.raises(ClientError, match="inference failed"):
-            client.ask(mock_session, "Hello", "medium")
+            await client.ask(session, "Hello", "medium")
 
-    def test_ask_retries_on_503_and_eventually_succeeds(self) -> None:
+    async def test_ask_retries_on_503_and_eventually_succeeds(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "ok"
-        mock_session.send_message.side_effect = [
-            RuntimeError("503 UNAVAILABLE"),
-            mock_response,
-        ]
-        with patch("gemini_bridge.client.time.sleep"):
-            result = client.ask(mock_session, "Hello", "low")
+        gen = _mock_generate(
+            client, side_effect=[RuntimeError("503 UNAVAILABLE"), _text_response("ok")]
+        )
+        session = client.get_or_create_session()
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+            result = await client.ask(session, "Hello", "low")
         assert result == "ok"
-        assert mock_session.send_message.call_count == 2
+        assert gen.await_count == 2
 
-    def test_ask_raises_after_all_retries_exhausted(self) -> None:
+    async def test_ask_raises_after_all_retries_exhausted(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_session.send_message.side_effect = RuntimeError("503 UNAVAILABLE")
-        with patch("gemini_bridge.client.time.sleep"):
+        _mock_generate(client, side_effect=RuntimeError("503 UNAVAILABLE"))
+        session = client.get_or_create_session()
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
             with pytest.raises(ClientError, match="after 4 attempt"):
-                client.ask(mock_session, "Hello", "low")
+                await client.ask(session, "Hello", "low")
 
-    def test_ask_does_not_retry_non_retryable_error(self) -> None:
+    async def test_ask_does_not_retry_non_retryable_error(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_session.send_message.side_effect = RuntimeError("400 INVALID_ARGUMENT")
-        with patch("gemini_bridge.client.time.sleep") as mock_sleep:
+        gen = _mock_generate(client, side_effect=RuntimeError("400 INVALID_ARGUMENT"))
+        session = client.get_or_create_session()
+        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()) as mock_sleep:
             with pytest.raises(ClientError):
-                client.ask(mock_session, "Hello", "low")
-        mock_sleep.assert_not_called()
-        assert mock_session.send_message.call_count == 1
+                await client.ask(session, "Hello", "low")
+        mock_sleep.assert_not_awaited()
+        assert gen.await_count == 1
 
-    def test_ask_uses_config_default_thinking_when_none(self) -> None:
+    async def test_ask_uses_config_default_thinking_when_none(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "ok"
-        mock_session.send_message.return_value = mock_response
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        session = client.get_or_create_session()
 
-        client.ask(mock_session, "Hello", None)
-        mock_session.send_message.assert_called_once()
-        call_kwargs = mock_session.send_message.call_args
-        assert call_kwargs is not None
+        await client.ask(session, "Hello", None)
+        gen.assert_awaited_once()
+        assert gen.call_args.kwargs["config"].thinking_config is not None
 
-    def test_ask_passes_system_instruction_in_gen_config(self) -> None:
+    async def test_ask_passes_system_instruction_in_gen_config(self) -> None:
         client = _make_client()
-        mock_session = MagicMock()
-        mock_response = MagicMock()
-        mock_response.text = "ok"
-        mock_session.send_message.return_value = mock_response
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        session = client.get_or_create_session()
 
-        client.ask(mock_session, "Hello", "low", system_instruction="You are a critic.")
-        _, kwargs = mock_session.send_message.call_args
-        assert kwargs["config"].system_instruction == "You are a critic."
+        await client.ask(session, "Hello", "low", system_instruction="You are a critic.")
+        assert gen.call_args.kwargs["config"].system_instruction == "You are a critic."
+
+    async def test_ask_uses_session_model(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        session = client.get_or_create_session(model="gemini-2.5-pro")
+
+        await client.ask(session, "Hello", "low")
+        assert gen.call_args.kwargs["model"] == "gemini-2.5-pro"
+
+    async def test_ask_success_appends_prompt_and_answer_to_history(self) -> None:
+        client = _make_client()
+        _mock_generate(client, return_value=_text_response("answer"))
+        session = client.get_or_create_session()
+
+        await client.ask(session, "question", "low")
+        assert [c.role for c in session.history] == ["user", "model"]
+        assert session.history[0].parts[0].text == "question"  # type: ignore[index]
+        assert session.history[1].parts[0].text == "answer"  # type: ignore[index]
+
+    async def test_ask_sends_prior_history(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(client, return_value=_text_response("a"))
+        session = client.get_or_create_session()
+
+        await client.ask(session, "first", "low")
+        await client.ask(session, "second", "low")
+        sent = gen.call_args.kwargs["contents"]
+        assert [c.parts[0].text for c in sent] == ["first", "a", "second"]
+
+    async def test_ask_failure_leaves_history_unchanged(self) -> None:
+        client = _make_client()
+        _mock_generate(client, return_value=_text_response("a"))
+        session = client.get_or_create_session()
+        await client.ask(session, "first", "low")
+        before = list(session.history)
+
+        _mock_generate(client, side_effect=RuntimeError("400 INVALID_ARGUMENT"))
+        with pytest.raises(ClientError):
+            await client.ask(session, "second", "low")
+        assert session.history == before
 
     def test_default_thinking_property(self) -> None:
         client = _make_client()
@@ -256,7 +297,6 @@ class TestDefaultModel:
 
     def test_omitted_model_uses_config_default_for_session(self) -> None:
         client = self._client_with_default("gemini-2.5-pro")
-        client._raw_client.chats.create.return_value = MagicMock()
         client.get_or_create_session("ask:default")  # model omitted
         assert "ask:default:gemini-2.5-pro" in client._sessions
 
@@ -265,3 +305,71 @@ class TestDefaultModel:
         client = self._client_with_default("gemini-2.5-pro")
         cfg = client._build_generation_config("none")  # no model arg
         assert cfg.thinking_config.thinking_budget == 128  # type: ignore[union-attr]
+
+
+def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # type: ignore[type-arg]
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(function_call=types.FunctionCall(name=name, args=args))],
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def _echo_registry():  # type: ignore[no-untyped-def]
+    from gemini_bridge.tool_loop import ToolRegistry
+
+    reg = ToolRegistry()
+
+    async def handler(args: dict) -> dict:  # type: ignore[type-arg]
+        return {"content": "file body"}
+
+    reg.add(types.FunctionDeclaration(name="read_file", description="read"), handler)
+    return reg
+
+
+class TestAskWithTools:
+    async def test_tool_turns_not_committed_to_history(self) -> None:
+        client = _make_client()
+        _mock_generate(
+            client,
+            side_effect=[_call_response("read_file", {"path": "a.py"}), _text_response("done")],
+        )
+        session = client.get_or_create_session()
+        records: list = []  # type: ignore[type-arg]
+
+        result = await client.ask(session, "q", "low", registry=_echo_registry(), records=records)
+        assert result == "done"
+        assert [c.role for c in session.history] == ["user", "model"]
+        assert session.history[1].parts[0].text == "done"  # type: ignore[index]
+        assert [r.name for r in records] == ["read_file"]
+
+    async def test_declarations_sent_with_afc_disabled(self) -> None:
+        client = _make_client()
+        gen = _mock_generate(client, return_value=_text_response("ok"))
+        session = client.get_or_create_session()
+        await client.ask(session, "q", "low", registry=_echo_registry())
+
+        cfg = gen.call_args.kwargs["config"]
+        assert [d.name for d in cfg.tools[0].function_declarations] == ["read_file"]
+        assert cfg.automatic_function_calling.disable is True
+
+    def test_build_config_without_declarations_has_no_tools(self) -> None:
+        cfg = _make_client().build_config("low")
+        assert cfg.tools is None and cfg.tool_config is None
+
+    def test_build_config_always_disables_sdk_afc(self) -> None:
+        # The bridge runs its own loop; SDK AFC must never engage (and never log its warning).
+        cfg = _make_client().build_config("low")
+        assert cfg.automatic_function_calling.disable is True  # type: ignore[union-attr]
+
+    def test_build_config_allow_tools_false_sets_mode_none(self) -> None:
+        decl = types.FunctionDeclaration(name="t", description="d")
+        cfg = _make_client().build_config("low", declarations=[decl], allow_tools=False)
+        assert cfg.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.NONE  # type: ignore[union-attr]
+        assert cfg.tools is not None

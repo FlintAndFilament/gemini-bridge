@@ -51,3 +51,6 @@ CLAUDE.md
 
 # Config (user-local, not in repo)
 .env
+
+# Gemini artifacts (local only)
+gemini-artifacts/

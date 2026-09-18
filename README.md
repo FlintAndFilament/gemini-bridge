@@ -33,6 +33,10 @@ All five inference tools share optional `thinking` (`none`/`low`/`medium`/`high`
 
 A sixth utility tool, **`gemini_list_models`**, returns the chat-capable models available on your active backend — use it to discover valid `model=` values. See [Choosing a model](#choosing-a-model).
 
+**Repository access:** Gemini can read the repo Claude Code was launched in — `list_dir`, `glob`, `grep`, `read_file` for all five inference tools, plus `write_file` for `brainstorm`, `architect`, and `review`. Everything is confined to the launch directory: `..`, outside absolute paths, and symlink escapes are rejected, and `.git`, `.env*`, keys, and credential files are denied. Nothing is ever executed. Every file operation is logged in the transcript. Turn it all off with `"file_tools": {"enabled": false}`. See [docs/tools.md](docs/tools.md#repository-access).
+
+**Artifacts:** `gemini_architect` and `gemini_review` save each answer to `gemini-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` (pass `write_artifact=false` to skip). `gemini_brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
+
 **Session model:** One Gemini chat session per tool name per Claude Code process. Context accumulates naturally within a session — later calls can reference earlier ones. Changing `model` starts a separate session (sessions are keyed by tool + name + model).
 
 **Transcript logging:** Every exchange appended to `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`.
@@ -123,6 +127,10 @@ Restart Claude Code after step 3. On next start you'll see startup entries in th
 | `default_thinking` | `medium` | Thinking level when omitted per call |
 | `default_model` | *(built-in)* | Default Gemini model for calls that omit `model=`. Unset → built-in `gemini-3.5-flash`. Per-call `model=` always overrides |
 | `transcript_dir` | `./session-summaries` | Transcript directory; relative paths resolve to the project root where Claude Code was launched |
+| `artifacts_dir` | `./gemini-artifacts` | Where architect/review (and opted-in brainstorm) answers are saved; must be inside the project root |
+| `file_tools.enabled` | `true` | Kill switch for Gemini's repository access |
+| `file_tools.deny` | secrets list | Paths Gemini may never read or write (replaces the default list when set) |
+| `file_tools.max_write_bytes` | `262144` | Size cap for a single `write_file` |
 | `auth.method` | `adc` | `adc` · `env` · `keychain` · `api_key` |
 | `auth.keychain_service` | `gemini-bridge` | Keychain service name (`keychain` only) |
 | `auth.keychain_account` | `vertex-sa` | Keychain account name (`keychain` only) |

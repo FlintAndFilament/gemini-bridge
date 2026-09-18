@@ -4,7 +4,7 @@ gemini_bridge/config.py
 Load and validate configuration from ~/.config/gemini-bridge/config.json.
 
 Responsibilities:
-  - Define Config and AuthConfig pydantic models
+  - Define Config, AuthConfig, and FileToolsConfig pydantic models
   - Load config from the standard path (~/.config/gemini-bridge/config.json)
   - Provide sensible defaults for all optional fields
   - Raise ConfigError with actionable messages on validation failure
@@ -18,7 +18,7 @@ Raises:
   ConfigError — wraps all config load/parse/validation failures
 
 Used by:  auth.py, client.py, transcript.py, server.py
-Imports:  (stdlib + pydantic only)
+Imports:  sandbox.py (DEFAULT_DENY — stdlib-only module), pydantic
 """
 
 import json
@@ -26,7 +26,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+from gemini_bridge.sandbox import DEFAULT_DENY
 
 CONFIG_PATH: Path = Path.home() / ".config" / "gemini-bridge" / "config.json"
 
@@ -63,6 +65,14 @@ class AuthConfig(BaseModel):
         return self
 
 
+class FileToolsConfig(BaseModel):
+    """Gemini's sandboxed file tools. `deny` replaces the default list when set."""
+
+    enabled: bool = True  # master kill switch — false = no tools declared to Gemini
+    deny: list[str] = Field(default_factory=lambda: list(DEFAULT_DENY))
+    max_write_bytes: int = Field(default=262_144, gt=0)
+
+
 class Config(BaseModel):
     project: Optional[str] = None  # required for adc/env/keychain; unused for api_key
     location: str = "global"
@@ -71,6 +81,9 @@ class Config(BaseModel):
     # Omit to use the server's built-in default. Individual calls override via the model= param.
     default_model: Optional[str] = None
     transcript_dir: str = "./session-summaries"
+    # Where gemini_architect / gemini_review (and opted-in brainstorm) save their output.
+    artifacts_dir: str = "./gemini-artifacts"
+    file_tools: FileToolsConfig = FileToolsConfig()
     auth: AuthConfig = AuthConfig()
 
     @model_validator(mode="after")

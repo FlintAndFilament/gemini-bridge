@@ -12,6 +12,11 @@ Created by `bash setup.sh`. Safe to edit by hand.
   "location": "global",
   "default_thinking": "medium",
   "transcript_dir": "./session-summaries",
+  "artifacts_dir": "./gemini-artifacts",
+  "file_tools": {
+    "enabled": true,
+    "max_write_bytes": 262144
+  },
   "auth": {
     "method": "adc"
   }
@@ -93,6 +98,55 @@ The default `./session-summaries` resolves relative to the project root where Cl
 was launched — transcripts land in `your-project/session-summaries/` automatically, one
 directory per project. Override with an absolute path (e.g. `"~/gemini-transcripts"`) to
 collect transcripts globally instead.
+
+---
+
+### `artifacts_dir`
+
+**Type:** string (path, relative to Claude Code's working directory)
+**Default:** `"./gemini-artifacts"`
+
+Where `gemini_architect` and `gemini_review` (and `gemini_brainstorm` with `write_artifact=true`)
+save their answers. Created on first save. It **must lie inside the project root and outside the
+deny-list** — the server refuses to start otherwise. Add it to `.gitignore` or commit it, per
+project.
+
+---
+
+### `file_tools.enabled`
+
+**Type:** boolean
+**Default:** `true`
+
+Master switch for Gemini's repository access (`list_dir`, `glob`, `grep`, `read_file`,
+`write_file`). `false` declares no tools to Gemini at all — calls behave exactly as before this
+feature. Artifacts are unaffected (they are written by the bridge, not by Gemini).
+
+File tools are also switched off automatically when Claude Code is launched from your home
+directory, the filesystem root, or any directory containing your home directory — a sandbox
+rooted there would expose `~/.ssh`, cloud credentials, and shell history.
+
+---
+
+### `file_tools.deny`
+
+**Type:** list of glob patterns
+**Default:** `[".git/**", ".env", ".env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa*", "**/id_dsa*", "**/id_ecdsa*", "**/id_ed25519*", "**/*credentials*.json", "**/*-sa-key.json", ".ssh/**", ".aws/**", ".gnupg/**", ".netrc", ".npmrc", ".pypirc"]`
+
+Paths Gemini can never read, list, search, or write, even inside the project root. Matched
+case-insensitively **at any depth**: a pattern without `/` matches a file or directory name
+anywhere; `dir/**` covers any directory named `dir` and everything in it (so `.git/**` also
+covers a nested `vendor/lib/.git/`).
+**Setting this replaces the defaults** — copy them into your list if you want to keep them.
+
+---
+
+### `file_tools.max_write_bytes`
+
+**Type:** positive integer
+**Default:** `262144` (256 KiB)
+
+Largest content a single `write_file` call may write.
 
 ---
 
