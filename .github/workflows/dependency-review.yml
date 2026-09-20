@@ -14,6 +14,10 @@ on:
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+    # Least privilege, declared explicitly so the job does not depend on the repo
+    # default staying read-only (#72). The action only reads the diff.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
