@@ -11,6 +11,11 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    # The repo's default GITHUB_TOKEN is read-only, so the SARIF upload below needs
+    # security-events: write declared here rather than widening the repo default (#72).
+    permissions:
+      contents: read
+      security-events: write
     container:
       image: semgrep/semgrep
     steps:
