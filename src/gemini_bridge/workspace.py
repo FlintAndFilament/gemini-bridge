@@ -43,6 +43,11 @@ class Workspace:
     artifacts: ArtifactStore
     disabled_reason: Optional[str] = None
 
+    @property
+    def max_write_bytes(self) -> int:
+        """The enforced write cap, read from FileTools so metadata cannot drift (#74)."""
+        return self.file_tools.max_write_bytes
+
     def registry(self, *, write: bool) -> Optional[ToolRegistry]:
         """The file tools for one call, or None when the capability is switched off."""
         if not self.tools_enabled:

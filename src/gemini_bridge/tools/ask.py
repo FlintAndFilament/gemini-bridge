@@ -25,7 +25,15 @@ from pydantic import Field
 
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
-from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
+from gemini_bridge.tools.base import (
+    ArtifactMode,
+    ToolCapability,
+    ToolResult,
+    call_gemini,
+    capability_hint,
+    model_param_hint,
+    tool_annotations,
+)
 from gemini_bridge.transcript import TranscriptWriter
 from gemini_bridge.workspace import Workspace
 
@@ -38,6 +46,15 @@ _TOOL_NAME = "gemini_ask"
 # Capability row (#68): read-only: findings go back to Claude, not to disk.
 _WRITE = False
 
+# This tool saves no artifact; only the transcript entry reaches disk.
+_ARTIFACTS: ArtifactMode = "never"
+
+# The capability row server.py advertises; keep _WRITE/_ARTIFACTS above as the source.
+CAPABILITY = ToolCapability(name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS)
+
+# Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
+_DESCRIPTION = "Ask Gemini a general question. Use when no other specialized tool fits."
+
 
 def register(
     mcp: FastMCP,
@@ -48,7 +65,10 @@ def register(
     """Register gemini_ask with the MCP server."""
     model_hint = model_param_hint(client)
 
-    @mcp.tool()
+    @mcp.tool(
+        description=_DESCRIPTION + capability_hint(workspace, write=_WRITE, artifacts=_ARTIFACTS),
+        annotations=tool_annotations(workspace, write=_WRITE),
+    )
     async def gemini_ask(
         prompt: Annotated[str, Field(description="The question or request to send to Gemini")],
         thinking: Annotated[
@@ -63,7 +83,6 @@ def register(
         ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
     ) -> ToolResult:
-        """Ask Gemini a general question. Use when no other specialized tool fits."""
         return await call_gemini(
             client=client,
             transcript=transcript,

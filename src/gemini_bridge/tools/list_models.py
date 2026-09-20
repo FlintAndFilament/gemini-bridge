@@ -23,6 +23,7 @@ Imports:  models.py (filter + shortlist), client.py (GeminiClient, ClientError),
 from typing import Annotated, Any, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from gemini_bridge import models
@@ -31,6 +32,8 @@ from gemini_bridge.tools.base import ToolResult
 from gemini_bridge.transcript import TranscriptWriter
 
 _TOOL_NAME = "gemini_list_models"
+# Exported so server.py can say, truthfully, that this one call writes nothing (#74).
+LIST_MODELS_TOOL_NAME = _TOOL_NAME
 
 _BACKEND_LABEL = {
     models.DEVELOPER_API: "Developer API (Google AI Studio)",
@@ -138,7 +141,16 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
     backend = models.backend_for(client.auth_method)
     cache: dict[str, str] = {}
 
-    @mcp.tool()
+    @mcp.tool(
+        # The one tool that writes nothing at all: no transcript entry, no artifact, no file
+        # access. Absent annotations make clients assume the opposite, so state it (#74).
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,  # it queries the live backend
+        )
+    )
     def gemini_list_models(
         refresh: Annotated[
             bool,

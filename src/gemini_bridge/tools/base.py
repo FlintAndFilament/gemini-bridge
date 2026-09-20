@@ -8,6 +8,7 @@ Responsibilities:
   - Define ThinkingParam type alias (optional thinking level parameter)
   - Provide call_gemini() helper that combines ask() + transcript append
   - Give Gemini the file tools matching the calling tool's capability row (read / read+write)
+  - Describe that capability row back to the MCP client (capability_hint, tool_annotations)
   - Save the final answer as an artifact when the calling tool asks for one
 
 Design notes:
@@ -24,7 +25,10 @@ Imports:  client.py (GeminiClient), transcript.py (TranscriptWriter), config.py 
 """
 
 import logging
-from typing import Optional
+from dataclasses import dataclass
+from typing import Literal, Optional
+
+from mcp.types import ToolAnnotations
 
 from gemini_bridge import models
 from gemini_bridge.client import (
@@ -35,6 +39,8 @@ from gemini_bridge.client import (
 
 _log = logging.getLogger(__name__)
 from gemini_bridge.config import ThinkingLevel
+from gemini_bridge.file_tools import READ_TOOL_NAMES, WRITE_TOOL_NAME
+from gemini_bridge.sandbox import DEFAULT_DENY, Sandbox
 from gemini_bridge.tool_loop import ToolCallRecord
 from gemini_bridge.transcript import TranscriptWriter
 from gemini_bridge.workspace import Workspace
@@ -57,6 +63,119 @@ _WRITE_PREAMBLE = (
 _ARTIFACT_PREAMBLE = (
     " Your final answer is saved to a file automatically — do not write it out with write_file."
 )
+
+
+# Whether a tool saves its answer as an artifact: never, only on write_artifact=true, or by
+# default. Artifacts are written by the bridge, not by Gemini, and never overwrite an existing
+# file — the store adds -2, -3 … on collision.
+ArtifactMode = Literal["never", "opt-in", "default"]
+
+
+@dataclass(frozen=True)
+class ToolCapability:
+    """One tool's capability row — the single source of truth for what it may do (#74).
+
+    Each tool module declares its own; server.py builds the advertised rows from the
+    collected set, so adding a tool or flipping its `write` flag updates every channel.
+    """
+
+    name: str
+    write: bool
+    artifacts: ArtifactMode
+
+
+def deny_note(sandbox: Sandbox) -> str:
+    """Describe the live deny-list — never the default one, which config can replace."""
+    if not sandbox.deny:
+        return "no deny-list is configured"
+    if tuple(sandbox.deny) == tuple(DEFAULT_DENY):
+        return "the default deny-list blocks .git, .env*, and key and credential files"
+    return "the configured deny-list blocks " + ", ".join(sandbox.deny)
+
+
+_SEARCH_NOTE = (
+    "everything else under the root is readable by path, though searches are not exhaustive: "
+    "glob and grep skip dependency and cache directories, never follow symlinked directories, "
+    "and cap their results, and read_file refuses binary files — so an empty result is not "
+    "proof of absence. The server instructions give the specifics"
+)
+_NO_READ = (
+    "Gemini cannot read any file, so include the code or context you want considered "
+    "directly in this call."
+)
+_ARTIFACT_CLAUSE: dict[ArtifactMode, str] = {
+    "never": "",
+    "opt-in": (
+        " With write_artifact=true, the bridge also saves the answer as a new Markdown file in "
+        "the artifacts directory (it never overwrites an existing one)."
+    ),
+    "default": (
+        " The bridge also saves the answer as a new Markdown file in the artifacts directory "
+        "(it never overwrites an existing one); pass write_artifact=false to skip that."
+    ),
+}
+
+
+def capability_hint(
+    workspace: Optional[Workspace],
+    *,
+    write: bool,
+    artifacts: ArtifactMode = "never",
+) -> str:
+    """Client-facing sentence describing what this tool can read and what it writes (#74).
+
+    Appended to the tool's MCP description at registration, so what the calling Claude
+    session is told can never contradict the workspace actually wired up — the same
+    discipline model_param_hint() applies to the `model` parameter.
+
+    Every call writes a transcript entry, and the artifact clauses hold even when file
+    tools are switched off, so the hint never claims the call leaves the tree untouched.
+    """
+    disk = " Writes to disk: the bridge appends this exchange to the session transcript."
+    if workspace is None:
+        return f"\n\nRepository access: none. {_NO_READ}{disk}"
+    if not workspace.tools_enabled:
+        disk += _ARTIFACT_CLAUSE[artifacts]
+        return (
+            f"\n\nRepository access: OFF ({workspace.disabled_reason}). {_NO_READ}{disk} "
+            "Gemini itself cannot write anything."
+        )
+
+    hint = (
+        f"\n\nRepository access: Gemini reads this repository itself with "
+        f"{', '.join(READ_TOOL_NAMES)}, "
+        f"sandboxed to {workspace.sandbox.root} — {deny_note(workspace.sandbox)}, and "
+        f"{_SEARCH_NOTE}. Name the paths it should look at rather than pasting file contents "
+        "into this call."
+    )
+    if write:
+        disk += (
+            " This call MAY MODIFY the working tree: Gemini can create or overwrite files "
+            f"anywhere under the root with {WRITE_TOOL_NAME} (up to {workspace.max_write_bytes} "
+            "bytes "
+            "each). It cannot delete, rename, or execute anything."
+        )
+    else:
+        disk += " Gemini itself cannot modify the working tree."
+    return hint + disk + _ARTIFACT_CLAUSE[artifacts]
+
+
+def tool_annotations(workspace: Optional[Workspace], *, write: bool) -> ToolAnnotations:
+    """Structured MCP hints matching the capability row (#74).
+
+    readOnlyHint stays False everywhere: every call appends to the session transcript.
+    destructiveHint is True only where write_file is both exposed and switched on, since
+    it can overwrite an existing file. Artifact saving does not set it — the store creates
+    a new file (-2, -3 … on collision) and never overwrites, so it is additive, not
+    destructive. capability_hint() discloses it in words either way.
+    """
+    writes_files = write and workspace is not None and workspace.tools_enabled
+    return ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=writes_files,
+        idempotentHint=False,
+        openWorldHint=True,  # every call reaches the Gemini API
+    )
 
 
 def model_param_hint(client: GeminiClient) -> str:

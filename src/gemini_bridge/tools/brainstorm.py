@@ -24,7 +24,15 @@ from pydantic import Field
 
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
-from gemini_bridge.tools.base import ToolResult, call_gemini, model_param_hint
+from gemini_bridge.tools.base import (
+    ArtifactMode,
+    ToolCapability,
+    ToolResult,
+    call_gemini,
+    capability_hint,
+    model_param_hint,
+    tool_annotations,
+)
 from gemini_bridge.transcript import TranscriptWriter
 from gemini_bridge.workspace import Workspace
 
@@ -39,6 +47,18 @@ _TOOL_NAME = "gemini_brainstorm"
 # Capability row (#68): read + write_file.
 _WRITE = True
 
+# Artifact only when the caller passes write_artifact=true.
+_ARTIFACTS: ArtifactMode = "opt-in"
+
+# The capability row server.py advertises; keep _WRITE/_ARTIFACTS above as the source.
+CAPABILITY = ToolCapability(name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS)
+
+# Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
+_DESCRIPTION = (
+    "Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the "
+    "current direction and play devil's advocate."
+)
+
 
 def register(
     mcp: FastMCP,
@@ -49,7 +69,10 @@ def register(
     """Register gemini_brainstorm with the MCP server."""
     model_hint = model_param_hint(client)
 
-    @mcp.tool()
+    @mcp.tool(
+        description=_DESCRIPTION + capability_hint(workspace, write=_WRITE, artifacts=_ARTIFACTS),
+        annotations=tool_annotations(workspace, write=_WRITE),
+    )
     async def gemini_brainstorm(
         topic: Annotated[str, Field(description="The topic or problem to brainstorm about")],
         context: Annotated[
@@ -78,8 +101,6 @@ def register(
             ),
         ] = False,
     ) -> ToolResult:
-        """Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the
-        current direction and play devil's advocate."""
         full_prompt = topic if not context else f"{topic}\n\nContext: {context}"
         return await call_gemini(
             client=client,
