@@ -6,7 +6,8 @@ Six tools: five inference tools (`gemini_ask`, `gemini_brainstorm`, `gemini_revi
 The five inference tools share three optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; falls back to `default_thinking` in config
 - `session_name: str` — session identifier; v1 always uses the default session per tool
-- `model: str` — Gemini model id; omit for the server default (`gemini-3.5-flash`). The
+- `model: str` — `flash` / `flash-lite` / `pro` for the newest release of a family, or any Gemini
+  model id; omit for the server default (the newest Flash, resolved at startup). The
   parameter's description is **backend-aware** (it lists the models valid for your active
   backend). Sessions are keyed by tool + `session_name` + `model`, so switching model starts a
   fresh session. Call [`gemini_list_models`](#gemini_list_models) to discover valid values, and
@@ -60,6 +61,44 @@ inside a sandbox, then sends the result back. One MCP call can involve up to 20 
   never replayed.
 - Every call, including rejections, is listed under **Tool calls** in the transcript entry.
 
+**How the calling client learns about this.** The capability is advertised to the MCP client,
+not just to Gemini, so a Claude session knows to name paths instead of pasting file contents and
+knows which calls may touch the working tree. All three channels are computed from the live
+workspace at registration, so they cannot drift from the capability actually wired up:
+
+- **Server instructions** — the sandbox root, the deny-list, the directories `glob`/`grep` skip,
+  the read/write capability rows and the write cap, plus everything that reaches disk on any
+  call: the transcript path and which tools save artifacts. When file tools are off, this states
+  the reason instead — and still discloses the transcript and artifact writes, which happen
+  either way.
+- **Tool descriptions** — each tool's description ends with its own repository-access sentence
+  and a "Writes to disk" clause naming the transcript entry, `write_file` where the tool has it,
+  and the artifact if it saves one.
+- **Tool annotations** — `destructiveHint` is set on exactly the three `write_file` tools, and
+  only while file tools are enabled. Artifact saving does not set it: the store always creates a
+  new file (`-2`, `-3` … on collision) and never overwrites. `readOnlyHint` is false on the five
+  generating tools, because every one of them appends to the transcript, and true on
+  `gemini_list_models`, which writes nothing at all — a client that gates auto-approval on
+  annotations would otherwise prompt for the one harmless call and wave the rest through.
+  `openWorldHint` is true everywhere: every call reaches the Gemini API.
+
+Every advertised value is read from whatever enforces it, never restated: the capability rows
+from the `CAPABILITY` each tool module exports (built from its own `_WRITE` and `_ARTIFACTS`),
+the tool names from `READ_TOOL_NAMES` / `WRITE_TOOL_NAME` (derived from the declarations that
+build the registry), the deny-list from `Sandbox.deny`, the skipped directories from
+`WALK_SKIP_DIRS` minus whatever the deny-list already blocks, the result caps from the
+`*_MAX_*` constants `file_tools.py` enforces, and the write cap from `FileTools.max_write_bytes`.
+So changing a tool's capability row means changing `_WRITE` / `_ARTIFACTS` in its module and
+nothing else — both the tool's own description and the server-level rows follow.
+
+The instructions also state that searches are **not exhaustive** — `glob`/`grep` skip the
+directories above, never follow symlinked directories, and cap their results (flagged
+`truncated=true`), and `read_file` refuses binary files — so a caller does not read an empty
+`grep` as proof that a symbol is absent.
+
+`tests/test_capability_metadata.py` runs each tool and compares the files that actually appear
+against what the text promised, so wording that over- or under-claims fails the suite.
+
 **Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`) as
 `YYYYMMDD-HHMM-<tool>-<topic-slug>.md`, with a header naming the tool, model, session, and time.
 The reply ends with `[gemini-bridge] artifact saved: <path>`. If saving fails you still get the
@@ -82,7 +121,7 @@ answer, plus a `[gemini-bridge notice] artifact not saved: …` line. Artifacts 
 | `prompt` | string | yes | The question or request |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier (default: `"default"`) |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 
 **When to use:**
 - Direct questions with clear answers
@@ -112,7 +151,7 @@ gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait
 | `context` | string | no | What Claude is currently doing or has considered |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the ideas to `artifacts_dir` (default `false`) |
 
 **When to use:**
@@ -146,7 +185,7 @@ gemini_brainstorm(
 | `question` | string | no | Specific question to focus the review |
 | `thinking` | string | no | Reasoning depth |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
@@ -180,7 +219,7 @@ gemini_review(
 | `context` | string | no | Relevant code, recent changes, environment details |
 | `thinking` | string | no | Reasoning depth (use `high` for complex failures) |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 
 **When to use:**
 - Unexplained test failures
@@ -214,7 +253,7 @@ gemini_debug(
 | `question` | string | no | Specific architecture question or concern |
 | `thinking` | string | no | Reasoning depth (use `high` for complex systems) |
 | `session_name` | string | no | Session identifier |
-| `model` | string | no | Gemini model id; omit for the server default (`gemini-3.5-flash`) |
+| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
 | `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
 
 **When to use:**
@@ -274,16 +313,16 @@ current catalog):
 ```
 Gemini chat models on Developer API (Google AI Studio) (17 available):
 
-  gemini-3.5-flash                    (default)  — Gemini 3.5 Flash
-  gemini-3.1-flash-lite               — Gemini 3.1 Flash Lite
-  gemini-2.5-pro                      — Gemini 2.5 Pro
-  gemini-3-pro-preview                — Gemini 3 Pro Preview
-  gemini-3.1-pro-preview              — Gemini 3.1 Pro Preview
+  gemini-3.8-flash                    (default, latest flash)  — Gemini 3.8 Flash
+  gemini-3.1-pro-preview              (latest pro)  — Gemini 3.1 Pro Preview
+  gemini-3.5-flash                    — Gemini 3.5 Flash
+  gemini-3.5-flash-lite               (latest flash-lite)  — Gemini 3.5 Flash Lite
   gemini-flash-latest                 (alias)  — Gemini Flash Latest
   gemini-pro-latest                   (alias)  — Gemini Pro Latest
   …
 
-Pass model='<id>' to any tool. Omit to use the default (gemini-3.5-flash).
+Pass model='<id>' to any tool. Omit to use the default (gemini-3.8-flash).
+Or pass flash / flash-lite / pro to get the newest release of that family.
 ```
 On a Vertex backend the header names Vertex AI and the `-latest` aliases are absent.
 

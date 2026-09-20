@@ -227,16 +227,12 @@ case "$THINKING" in
     *) error "Invalid thinking level: $THINKING" ;;
 esac
 
-# --- default model (optional; blank uses the built-in default) ---
+# --- default model (optional; blank = newest Flash, resolved at server start) ---
 echo
-echo "Default model for calls that omit an explicit model (blank = built-in gemini-3.5-flash):"
-if [[ "$AUTH_METHOD" == "api_key" ]]; then
-    echo "  e.g. gemini-3.5-flash · gemini-3.1-flash-lite · gemini-flash-latest · gemini-pro-latest"
-else
-    echo "  e.g. gemini-3.5-flash · gemini-3.1-flash-lite · gemini-3.1-pro-preview · gemini-2.5-pro"
-fi
+echo "Default model for calls that omit an explicit model (blank = newest Flash, found at startup):"
+echo "  aliases that track new releases: flash · flash-lite · pro — or pin an id, e.g. gemini-3.5-flash"
 echo "  (a per-call model= always overrides this; run gemini_list_models later for the full list)"
-DEFAULT_MODEL=$(ask "Default model (blank for built-in)" "$PREV_DEFAULT_MODEL")
+DEFAULT_MODEL=$(ask "Default model (blank for newest Flash)" "$PREV_DEFAULT_MODEL")
 
 # --- transcript dir ---
 echo
@@ -312,12 +308,8 @@ fi
 echo "  claude mcp list"
 echo
 info "Model selection is per-call (no model in config):"
-echo "  • Default model: gemini-3.5-flash (falls back to gemini-3.1-flash-lite on overload)"
+echo "  • Default model: newest Flash, resolved at server start (falls back to newest Flash-Lite on overload)"
 echo "  • Pass model='<id>' to any tool to override; call gemini_list_models to see valid ids"
-if [[ "$AUTH_METHOD" == "api_key" ]]; then
-    echo "  • Developer API supports '-latest' aliases (e.g. gemini-flash-latest)"
-else
-    echo "  • Vertex AI uses versioned names; '-latest' aliases are not available"
-fi
+echo "  • Aliases flash / flash-lite / pro track the newest release on every backend"
 echo
 info "Done. Restart Claude Code to activate gemini-bridge."

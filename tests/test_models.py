@@ -7,6 +7,8 @@ name-based exclusion that guards that trap (verified live 2026-07-08).
 
 from types import SimpleNamespace
 
+import pytest
+
 from gemini_bridge import models
 
 
@@ -156,3 +158,120 @@ class TestIsChatCapable:
             "models/gemini-omni-flash-preview",
         ):
             assert models.is_chat_capable(_meta(name)) is False, name
+
+
+class TestResolveLatest:
+    """#69: pick the newest model per family from the live catalog."""
+
+    LIVE = [  # Developer API catalog, 2026-09-17
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-pro-preview-customtools",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-transcribe",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-pro-latest",
+        "gemini-2.5-pro-preview-tts",
+        "gemini-3-pro-image-preview",
+    ]
+
+    def test_matches_googles_own_aliases(self) -> None:
+        # Live probe: flash-latest -> 3.8-flash, flash-lite-latest -> 3.5-flash-lite,
+        # pro-latest -> 3.1-pro-preview.
+        assert models.resolve_latest(self.LIVE) == {
+            "flash": "gemini-3.8-flash",
+            "flash-lite": "gemini-3.5-flash-lite",
+            "pro": "gemini-3.1-pro-preview",
+        }
+
+    def test_numeric_not_lexical_ordering(self) -> None:
+        ids = ["gemini-3.8-flash", "gemini-3.10-flash", "gemini-3.9-flash"]
+        assert models.resolve_latest(ids)["flash"] == "gemini-3.10-flash"
+
+    def test_major_version_wins(self) -> None:
+        assert models.resolve_latest(["gemini-3.9-flash", "gemini-4-flash"])["flash"] == (
+            "gemini-4-flash"
+        )
+
+    def test_ga_preferred_over_preview_at_same_version(self) -> None:
+        ids = ["gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite"]
+        assert models.resolve_latest(ids)["flash-lite"] == "gemini-3.1-flash-lite"
+
+    def test_newer_preview_beats_older_ga(self) -> None:
+        assert models.resolve_latest(["gemini-2.5-pro", "gemini-3.1-pro-preview"])["pro"] == (
+            "gemini-3.1-pro-preview"
+        )
+
+    def test_prefixed_names_and_missing_families(self) -> None:
+        out = models.resolve_latest(["models/gemini-3.8-flash", "publishers/google/models/x"])
+        assert out == {"flash": "gemini-3.8-flash"}
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "gemini-3.1-pro-preview-customtools",
+            "gemini-3.5-transcribe",
+            "gemini-2.5-flash-001",
+            "gemini-3-pro-image-preview",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-preview-09-2025",
+        ],
+    )
+    def test_variants_never_selected(self, model_id: str) -> None:
+        assert models.resolve_latest([model_id]) == {}
+
+
+class TestAliasFamily:
+    @pytest.mark.parametrize(
+        ("name", "family"),
+        [
+            ("flash", "flash"),
+            ("flash-lite", "flash-lite"),
+            ("pro", "pro"),
+            ("FLASH", "flash"),
+            ("gemini-flash-latest", "flash"),
+            ("gemini-flash-lite-latest", "flash-lite"),
+            ("gemini-pro-latest", "pro"),
+        ],
+    )
+    def test_aliases(self, name: str, family: str) -> None:
+        assert models.alias_family(name) == family
+
+    @pytest.mark.parametrize("name", ["gemini-3.8-flash", "gemini-3.1-pro-preview", "gpt"])
+    def test_concrete_ids_are_not_aliases(self, name: str) -> None:
+        assert models.alias_family(name) is None
+
+
+class TestSchemaHintAliases:
+    def test_lists_aliases_with_resolution(self) -> None:
+        latest = {"flash": "gemini-3.8-flash", "pro": "gemini-3.1-pro-preview"}
+        hint = models.schema_hint(models.VERTEX, "gemini-3.8-flash", latest)
+        assert "flash (→ gemini-3.8-flash)" in hint
+        assert "pro (→ gemini-3.1-pro-preview)" in hint
+        assert "flash-lite" in hint  # unresolved family still offered
+
+    def test_aliases_offered_without_resolution(self) -> None:
+        hint = models.schema_hint(models.DEVELOPER_API, "gemini-3.5-flash")
+        assert "flash, flash-lite, pro" in hint
+
+
+class TestFutureGenerations:
+    """Finding 3: the list filter must accept every generation _model_family accepts."""
+
+    @pytest.mark.parametrize("name", ["models/gemini-4-flash", "models/gemini-10.2-pro"])
+    def test_later_generations_listed(self, name: str) -> None:
+        assert models.is_chat_capable(_meta(name))
+
+    @pytest.mark.parametrize("name", ["models/gemini-1.5-flash", "models/gemini-embedding-001"])
+    def test_older_or_non_generation_excluded(self, name: str) -> None:
+        assert not models.is_chat_capable(_meta(name))

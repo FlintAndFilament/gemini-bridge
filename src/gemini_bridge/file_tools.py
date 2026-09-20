@@ -103,6 +103,11 @@ class FileTools:
         self._sandbox = sandbox
         self._max_write_bytes = max_write_bytes
 
+    @property
+    def max_write_bytes(self) -> int:
+        """The enforced write cap — the value write_file() checks against (#74)."""
+        return self._max_write_bytes
+
     def list_dir(self, path: str = ".") -> dict[str, Any]:
         target = self._sandbox.resolve(path)
         if not target.is_dir():
@@ -319,6 +324,10 @@ _WRITE_DECLARATION: tuple[str, str, dict[str, Any]] = (
     "Cannot delete, rename, or execute anything.",
     _schema({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
 )
+
+
+READ_TOOL_NAMES: tuple[str, ...] = tuple(name for name, _, _ in _READ_DECLARATIONS)
+WRITE_TOOL_NAME: str = _WRITE_DECLARATION[0]
 
 
 def _handler(fn: Callable[..., dict[str, Any]], name: str) -> Any:

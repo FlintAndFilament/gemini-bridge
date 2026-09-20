@@ -36,7 +36,7 @@ Default: `INFO`.
 
 **Normal startup (INFO):**
 ```
-[gemini-bridge] 17:50:10 INFO     gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.5-flash
+[gemini-bridge] 17:50:10 INFO     gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
 [gemini-bridge] 17:50:10 INFO     gemini_bridge.__main__: transcript → ~/session-summaries/20260702-1750-gemini-bridge-transcript.md
 ```
 
