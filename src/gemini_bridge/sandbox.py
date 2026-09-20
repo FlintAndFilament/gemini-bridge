@@ -105,6 +105,11 @@ class Sandbox:
         self.root = root.resolve()
         self._deny = tuple(deny)
 
+    @property
+    def deny(self) -> tuple[str, ...]:
+        """The active deny-list patterns — read-only, for capability metadata (#74)."""
+        return self._deny
+
     def relative(self, path: Path) -> str:
         """Root-relative posix path; '.' for the root itself."""
         rel = path.relative_to(self.root).as_posix()
