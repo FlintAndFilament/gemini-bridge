@@ -115,6 +115,26 @@ project.
 
 ---
 
+
+### `web_tools`
+
+```json
+"web_tools": { "enabled": false }
+```
+
+Default answer for every tool's `web` argument. `false` (the default) means a call must pass
+`web=true` to let Gemini search the web and fetch URLs; `true` flips it, and calls pass
+`web=false` to opt out.
+
+Off by default because **grounding is billed per request** whenever the tools are attached,
+even when Gemini does not search.
+
+**This setting changes what a write-capable call can do.** Web access and `write_file` are
+mutually exclusive (see [tools.md](tools.md#web-access)), so with `enabled: true`,
+`gemini_brainstorm`, `gemini_review` and `gemini_architect` lose `write_file` unless the call
+passes `web=false`. Turning this on is therefore a change to your write workflow, not only to
+what Gemini can read.
+
 ### `file_tools.enabled`
 
 **Type:** boolean

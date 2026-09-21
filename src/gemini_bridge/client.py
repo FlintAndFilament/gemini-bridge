@@ -48,6 +48,7 @@ from gemini_bridge import models
 from gemini_bridge.config import Config, ModelFamily, ThinkingLevel
 from gemini_bridge.errors import ClientError
 from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
+from gemini_bridge.web_tools import web_tool_set
 
 __all__ = ["ClientError", "GeminiClient", "Session", "DEFAULT_MODEL", "FALLBACK_MODEL"]
 
@@ -224,6 +225,22 @@ class GeminiClient:
         return self._config.default_thinking
 
     @property
+    def web_supported(self) -> bool:
+        """False on Vertex: the SDK raises on include_server_side_tool_invocations there.
+
+        google_search and url_context themselves convert for Vertex, but the flag that lets
+        them share a request with our function declarations is Developer-API only, and the
+        file tools mean declarations are almost always present. Rather than fail the call,
+        callers drop web access and say so (#76).
+        """
+        return not self._is_vertex
+
+    @property
+    def web_default(self) -> bool:
+        """Config answer for a call's `web` argument when it is omitted (#76)."""
+        return self._config.web_tools.enabled
+
+    @property
     def default_model(self) -> str:
         """Concrete model for calls that omit `model`: the config's `default_model` (which may
         itself be an alias) if set, else the newest Flash, else the pinned DEFAULT_MODEL."""
@@ -292,25 +309,38 @@ class GeminiClient:
         model: Optional[str] = None,
         declarations: Optional[list[types.FunctionDeclaration]] = None,
         allow_tools: bool = True,
+        web: bool = False,
     ) -> GenerateContentConfig:
         """Build the request config: thinking for the model family, system instruction, and —
         when declarations are given — the tool set. SDK automatic function calling is always
         disabled (the bridge runs its own loop). allow_tools=False keeps the declarations but
-        forbids calls."""
+        forbids calls.
+
+        `web` attaches Gemini's server-side google_search and url_context (#76). Those run in
+        the API, not here. Combining them with function declarations requires
+        tool_config.include_server_side_tool_invocations — without it the API returns 400."""
         effective_model = self.resolve_model(model)
         si: dict[str, Any] = {
             "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True)
         }
         if system_instruction:
             si["system_instruction"] = system_instruction
+        web = web and self.web_supported  # the flag below is Developer-API only
+        tools: list[types.Tool] = list(web_tool_set()) if web else []
+        tool_config_args: dict[str, Any] = {}
+        if web:
+            # Required whenever built-in tools share a request with our declarations.
+            tool_config_args["include_server_side_tool_invocations"] = True
         if declarations:
-            si["tools"] = [types.Tool(function_declarations=declarations)]
+            tools.append(types.Tool(function_declarations=declarations))
             if not allow_tools:
-                si["tool_config"] = types.ToolConfig(
-                    function_calling_config=types.FunctionCallingConfig(
-                        mode=types.FunctionCallingConfigMode.NONE
-                    )
+                tool_config_args["function_calling_config"] = types.FunctionCallingConfig(
+                    mode=types.FunctionCallingConfigMode.NONE
                 )
+        if tools:
+            si["tools"] = tools
+        if tool_config_args:
+            si["tool_config"] = types.ToolConfig(**tool_config_args)
         family = (
             ModelFamily.GEMINI_2
             if effective_model in self._budget_models
@@ -393,21 +423,26 @@ class GeminiClient:
         system_instruction: Optional[str] = None,
         registry: Optional[ToolRegistry] = None,
         records: Optional[list[ToolCallRecord]] = None,
+        web: bool = False,
     ) -> str:
         """Send prompt in the session's context and return the answer text.
 
         With a non-empty `registry`, Gemini may call its tools; each executed call is appended
         to `records` as it happens. Only [prompt, final answer] is committed to
         session.history, and only on success. Raises ClientError.
+
+        `web` attaches the server-side web tools (#76); the API runs them, so they produce no
+        entries in `records` — their queries and sources arrive in grounding metadata instead.
         """
         effective_thinking: ThinkingLevel = thinking or self._config.default_thinking
         declarations = registry.declarations if registry else None
         _log.debug(
-            "ask: model=%s thinking=%s prompt_len=%d tools=%d",
+            "ask: model=%s thinking=%s prompt_len=%d tools=%d web=%s",
             session.model,
             effective_thinking,
             len(prompt),
             len(declarations or []),
+            web,
         )
 
         async def generate(
@@ -415,7 +450,12 @@ class GeminiClient:
         ) -> types.GenerateContentResponse:
             for attempt in range(_MAX_THINKING_ADJUSTMENTS + 1):
                 config = self.build_config(
-                    effective_thinking, system_instruction, session.model, declarations, allow_tools
+                    effective_thinking,
+                    system_instruction,
+                    session.model,
+                    declarations,
+                    allow_tools,
+                    web=web,
                 )
                 try:
                     return await self.generate(session.model, contents, config)
