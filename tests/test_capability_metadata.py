@@ -8,6 +8,7 @@ that forgets to tell the calling Claude session fails here.
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from mcp.types import Tool
 
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import Config
+from gemini_bridge.guide import help_text
 from gemini_bridge.server import build_server, server_instructions
 from gemini_bridge.tools.base import capability_hint, tool_annotations
 from gemini_bridge.transcript import TranscriptWriter
@@ -36,6 +38,11 @@ def _client() -> GeminiClient:
 def _workspace(root: Path, **file_tools: object) -> Workspace:
     cfg = Config(auth={"method": "api_key"}, file_tools=file_tools or {})  # type: ignore[arg-type]
     return build_workspace(cfg, root)
+
+
+def _full(workspace: Optional[Workspace], transcript: Optional[TranscriptWriter] = None) -> str:
+    """Every gemini_help topic: the detail that no longer fits the instructions (#78)."""
+    return help_text(workspace, transcript)
 
 
 def _server(tmp_path: Path, workspace: object) -> FastMCP:
@@ -284,18 +291,18 @@ class TestAdvertisedTextMatchesWhatActuallyHitsDisk:
     ) -> None:
         """#4: brainstorm accepts write_artifact too; the instructions must not imply it never
         writes one."""
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         sentence = next(s for s in text.split("\n") if "artifact" in s)
         assert "gemini_brainstorm" in sentence
         assert "write_artifact=true" in sentence
 
     def test_server_instructions_disclose_the_transcript_path(self, tmp_path: Path) -> None:
         transcript = TranscriptWriter(str(tmp_path / "transcripts"), datetime.now())
-        text = server_instructions(_workspace(tmp_path), transcript)
+        text = _full(_workspace(tmp_path), transcript)
         assert str(transcript.path) in text
 
     def test_disabled_instructions_still_disclose_artifacts(self, tmp_path: Path) -> None:
-        text = server_instructions(_workspace(tmp_path, enabled=False))
+        text = _full(_workspace(tmp_path, enabled=False))
         assert "artifact" in text.lower()
 
 
@@ -329,7 +336,7 @@ class TestAdvertisedSandboxMatchesTheRealOne:
     def test_search_skipped_directories_are_disclosed(self, tmp_path: Path) -> None:
         """glob/grep silently skip dependency and cache dirs; a caller told 'everything else is
         readable' would misread an empty grep as proof of absence."""
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         for skipped in ("node_modules", ".venv", "dist"):
             assert skipped in text
         assert "symlinked directories" in text
@@ -337,11 +344,11 @@ class TestAdvertisedSandboxMatchesTheRealOne:
 
     def test_denied_names_come_from_the_live_deny_list(self, tmp_path: Path) -> None:
         ws = _workspace(tmp_path, deny=["custom-secret.txt"])
-        text = server_instructions(ws)
+        text = _full(ws)
         assert "custom-secret.txt" in text
 
     def test_empty_deny_list_reads_as_nothing(self, tmp_path: Path) -> None:
-        text = server_instructions(_workspace(tmp_path, deny=[]))
+        text = _full(_workspace(tmp_path, deny=[]))
         assert "Denied at any depth: nothing (the deny-list is empty)." in text
 
 
@@ -366,7 +373,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
     def test_rows_match_the_exported_capability_set(self, tmp_path: Path) -> None:
         from gemini_bridge.tools import CAPABILITIES
 
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         read_line = next(ln for ln in text.splitlines() if "cannot modify the working tree" in ln)
         write_line = next(ln for ln in text.splitlines() if "write_file" in ln)
         for cap in CAPABILITIES:
@@ -380,7 +387,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
         # so the sandbox-root line can contain the bare word.
         line = next(
             ln
-            for ln in server_instructions(_workspace(tmp_path)).splitlines()
+            for ln in _full(_workspace(tmp_path)).splitlines()
             if "Markdown artifact" in ln
         )
         for cap in CAPABILITIES:
@@ -398,13 +405,13 @@ class TestAdvertisedRowsComeFromTheToolModules:
 
     def test_list_models_is_excluded_and_declared_silent(self, tmp_path: Path) -> None:
         """It takes a TranscriptWriter for signature parity but never writes one."""
-        text = server_instructions(_workspace(tmp_path))
-        assert "gemini_list_models is a metadata call and writes nothing" in text
+        text = _full(_workspace(tmp_path))
+        assert "gemini_list_models and gemini_help write nothing" in text
 
     def test_no_artifact_promise_without_a_workspace(self) -> None:
         """call_gemini gates artifact saving on workspace is not None, so with no workspace
         the instructions must not promise a file that never appears."""
-        text = server_instructions(None)
+        text = _full(None)
         assert "artifact" not in text.lower()
 
 
@@ -412,7 +419,7 @@ def test_skipped_list_excludes_what_the_deny_list_already_blocks(tmp_path: Path)
     """.git is in both WALK_SKIP_DIRS and DEFAULT_DENY; advertising it as 'readable by path'
     would contradict the deny row two lines above."""
     ws = _workspace(tmp_path)
-    text = server_instructions(ws)
+    text = _full(ws)
     skipped_line = next(ln for ln in text.splitlines() if "skipped by glob and grep" in ln)
     assert ".git," not in skipped_line and not skipped_line.endswith(".git.")
     assert "node_modules" in skipped_line
@@ -432,7 +439,7 @@ class TestNoHandWrittenRestatements:
         assert set(READ_TOOL_NAMES) == {d.name for d in registry.declarations}
 
         hint = capability_hint(ws, write=False)
-        text = server_instructions(ws)
+        text = _full(ws)
         for name in READ_TOOL_NAMES:
             assert name in hint and name in text
 
@@ -449,7 +456,7 @@ class TestNoHandWrittenRestatements:
     def test_result_caps_are_the_enforced_constants(self, tmp_path: Path) -> None:
         from gemini_bridge import file_tools as ft
 
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         assert str(ft.LIST_MAX_ENTRIES) in text
         assert str(ft.GLOB_MAX_RESULTS) in text
         assert str(ft.GREP_MAX_MATCHES) in text
@@ -457,7 +464,7 @@ class TestNoHandWrittenRestatements:
 
     def test_an_empty_search_is_declared_inconclusive(self, tmp_path: Path) -> None:
         """Truncation and skipping are silent; a caller must not read 0 results as absence."""
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         assert "not as proof" in text
         assert "truncated=true" in text
         assert "an empty result is not proof of absence" in capability_hint(
@@ -469,8 +476,8 @@ class TestInstructionsStayWellFormed:
     """The rows are built from a mutable capability set; the prose must survive any of them."""
 
     def _always_writes_line(self, caps: object, tmp_path: Path) -> str:
-        with patch("gemini_bridge.server.CAPABILITIES", caps):
-            text = server_instructions(_workspace(tmp_path))
+        with patch("gemini_bridge.guide.CAPABILITIES", caps):
+            text = _full(_workspace(tmp_path))
         return next(ln for ln in text.splitlines() if "Markdown artifact" in ln)
 
     def test_no_dangling_verb_when_nothing_saves_by_default(self, tmp_path: Path) -> None:
@@ -489,8 +496,8 @@ class TestInstructionsStayWellFormed:
         from gemini_bridge.tools.base import ToolCapability
 
         caps = (ToolCapability("gemini_ask", write=False, artifacts="never"),)
-        with patch("gemini_bridge.server.CAPABILITIES", caps):
-            text = server_instructions(_workspace(tmp_path))
+        with patch("gemini_bridge.guide.CAPABILITIES", caps):
+            text = _full(_workspace(tmp_path))
         assert "Markdown artifact" not in text
 
     def test_skipped_row_reads_as_nothing_when_all_are_denied(self, tmp_path: Path) -> None:
@@ -500,7 +507,7 @@ class TestInstructionsStayWellFormed:
             tmp_path, deny=[f"**/{name}/**" for name in WALK_SKIP_DIRS] + list(WALK_SKIP_DIRS)
         )
         line = next(
-            ln for ln in server_instructions(ws).splitlines() if "skipped by glob and grep" in ln
+            ln for ln in _full(ws).splitlines() if "skipped by glob and grep" in ln
         )
         assert "nothing (all of them are denied)" in line
 
@@ -577,7 +584,7 @@ class TestHelpText:
     ) -> None:
         from gemini_bridge.tools import CAPABILITIES
 
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         assert "Choosing a tool:" in text
         for cap in CAPABILITIES:
             assert f"- {cap.name}: {cap.summary}" in text
@@ -591,15 +598,15 @@ class TestHelpText:
             assert (tools[cap.name].description or "").startswith(cap.summary)
 
     def test_instructions_say_when_to_reach_for_web(self, tmp_path: Path) -> None:
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         assert "Use web=true when" in text
         assert "stale" in text
 
     def test_fresh_session_advice_accompanies_the_exclusion(self, tmp_path: Path) -> None:
-        text = server_instructions(_workspace(tmp_path))
+        text = _full(_workspace(tmp_path))
         assert "new session_name" in text
 
     def test_no_fresh_session_advice_without_writes(self, tmp_path: Path) -> None:
         """With file tools off there is no write to protect, so the advice would mislead."""
-        text = server_instructions(_workspace(tmp_path, enabled=False))
+        text = _full(_workspace(tmp_path, enabled=False))
         assert "new session_name" not in text
