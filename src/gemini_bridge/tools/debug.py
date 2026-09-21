@@ -25,13 +25,13 @@ from pydantic import Field
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import (
-    SESSION_PARAM_HINT,
     ArtifactMode,
     ToolCapability,
     ToolResult,
     call_gemini,
     capability_hint,
     model_param_hint,
+    session_param_hint,
     tool_annotations,
 )
 from gemini_bridge.transcript import TranscriptWriter
@@ -100,7 +100,9 @@ def register(
                 description="Reasoning depth: none, low, medium, high. Defaults to config setting."
             ),
         ] = None,
-        session_name: Annotated[str, Field(description=SESSION_PARAM_HINT)] = "default",
+        session_name: Annotated[
+            str, Field(description=session_param_hint(workspace, write=_WRITE))
+        ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
         web: Annotated[
             Optional[bool],

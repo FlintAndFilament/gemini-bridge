@@ -528,11 +528,33 @@ class TestHelpText:
         props = _tools(_server(tmp_path, _workspace(tmp_path)))[tool].inputSchema["properties"]
         return {k: v.get("description", "") for k, v in props.items()}
 
-    def test_session_name_description_is_identical_on_every_tool(self, tmp_path: Path) -> None:
+    def test_session_name_shares_one_base_on_every_tool(self, tmp_path: Path) -> None:
         """Five hand-written copies drifted: gemini_ask's said 'v1: always default' long after
-        session names started working. One shared definition keeps them aligned."""
-        seen = {self._params(tmp_path, t)["session_name"] for t in GENERATING_TOOLS}
-        assert len(seen) == 1
+        session names started working. Every tool now starts from one shared base."""
+        from gemini_bridge.tools.base import _SESSION_BASE
+
+        for tool in GENERATING_TOOLS:
+            assert self._params(tmp_path, tool)["session_name"].startswith(_SESSION_BASE)
+
+    @pytest.mark.parametrize("tool", WRITE_TOOLS)
+    def test_write_tools_get_the_switch_names_advice(self, tmp_path: Path, tool: str) -> None:
+        assert "new name before asking for writes" in self._params(tmp_path, tool)["session_name"]
+
+    @pytest.mark.parametrize("tool", READ_ONLY_TOOLS)
+    def test_read_only_tools_do_not(self, tmp_path: Path, tool: str) -> None:
+        """gemini_ask can never write; telling Claude to abandon its session would cost
+        conversation continuity for nothing (review finding)."""
+        assert "writes" not in self._params(tmp_path, tool)["session_name"]
+
+    @pytest.mark.parametrize("tool", WRITE_TOOLS)
+    def test_no_switch_advice_with_file_tools_off(self, tmp_path: Path, tool: str) -> None:
+        props = _tools(_server(tmp_path, _workspace(tmp_path, enabled=False)))[tool].inputSchema
+        assert "writes" not in props["properties"]["session_name"]["description"]
+
+    def test_tool_web_note_matches_the_server_advice(self, tmp_path: Path) -> None:
+        """The tool's own description and the server instructions must give the same advice."""
+        described = _tools(_server(tmp_path, _workspace(tmp_path)))["gemini_review"].description
+        assert "new session_name" in (described or "")
 
     def test_session_name_description_is_accurate(self, tmp_path: Path) -> None:
         from gemini_bridge.client import MAX_SESSIONS
