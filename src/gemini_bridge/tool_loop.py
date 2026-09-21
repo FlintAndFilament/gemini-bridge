@@ -30,7 +30,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from google.genai import types
 
@@ -71,12 +71,23 @@ def _preview(value: Any) -> str:
     return text
 
 
+def _size(n: int) -> str:
+    return f"{n / 1024:.1f} KiB" if n >= 1024 else f"{n} B"
+
+
 def summarize(result: dict[str, Any]) -> tuple[bool, str]:
-    """(ok, short summary) for a handler result: the error text, or the result's size."""
+    """(ok, short summary) for a handler result: the error text, or what the call amounted to.
+
+    For a write, that is the size of the file written. For everything else it is the size of
+    the result returned into Gemini's context, which is what a read actually cost. Reporting
+    the response size for writes too made a 5-byte file log as "50 B" — the size of the
+    {"path", "bytes_written"} acknowledgement, which a reader takes for the file.
+    """
     if "error" in result:
         return False, str(result["error"])
-    size = len(json.dumps(result, ensure_ascii=False).encode())
-    return True, f"{size / 1024:.1f} KiB" if size >= 1024 else f"{size} B"
+    if "bytes_written" in result:
+        return True, f"wrote {_size(int(result['bytes_written']))}"
+    return True, _size(len(json.dumps(result, ensure_ascii=False).encode()))
 
 
 class ToolRegistry:
@@ -114,10 +125,72 @@ class ToolRegistry:
 
 @dataclass(frozen=True)
 class LoopResult:
-    """The final answer text and the model turn that produced it (committed to history)."""
+    """The final answer text and the model turn that produced it.
+
+    `content` is committed to session history, and carries only answer parts — server-side
+    tool traffic is stripped by _answer_only() so untrusted web content does not persist.
+    """
 
     text: str
     content: types.Content
+
+
+def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) -> None:
+    """Log server-side web activity into `records`, beside the locally executed calls (#76).
+
+    Web tools run inside the Gemini API, so they never reach ToolRegistry.dispatch and would
+    otherwise leave no trace. The queries, the URLs fetched and the sources Gemini grounded on
+    are the audit trail for a web-enabled call — and, since retrieved pages are untrusted, the
+    thing a reader most needs to see.
+
+    The two built-ins report separately: searches land in `grounding_metadata`, URL fetches in
+    `url_context_metadata`. A pure fetch produces no grounding chunks, so it must be read from
+    its own field or it goes unrecorded.
+
+    Sources are named by `title` (e.g. "python.org"); the `uri` is an opaque vertexaisearch
+    redirect that tells a transcript reader nothing.
+    """
+    for url, status in _fetched_urls(candidate):
+        ok = status is None or "SUCCESS" in str(status).upper()
+        records.append(
+            ToolCallRecord(
+                name="url_context",
+                args={"url": url},
+                ok=ok,
+                summary="retrieved" if ok else f"not retrieved ({status})",
+            )
+        )
+
+    meta = getattr(candidate, "grounding_metadata", None)
+    if not meta:
+        return
+    sources: list[str] = []
+    for chunk in meta.grounding_chunks or []:
+        web = getattr(chunk, "web", None)
+        if not web:
+            continue
+        name = (
+            getattr(web, "title", None) or getattr(web, "domain", None) or getattr(web, "uri", None)
+        )
+        if name and name not in sources:
+            sources.append(name)
+    summary = f"{len(sources)} source(s)" + (f": {', '.join(sources[:5])}" if sources else "")
+    for query in meta.web_search_queries or []:
+        records.append(
+            ToolCallRecord(name="google_search", args={"query": query}, ok=True, summary=summary)
+        )
+
+
+def _fetched_urls(candidate: types.Candidate) -> list[tuple[str, Optional[str]]]:
+    """(url, retrieval status) for every url_context fetch reported on this turn."""
+    meta = getattr(candidate, "url_context_metadata", None)
+    out: list[tuple[str, Optional[str]]] = []
+    for entry in (getattr(meta, "url_metadata", None) or []) if meta else []:
+        url = getattr(entry, "retrieved_url", None)
+        if url:
+            status = getattr(entry, "url_retrieval_status", None)
+            out.append((url, str(status) if status is not None else None))
+    return out
 
 
 async def _generate_turn(
@@ -138,6 +211,25 @@ async def _generate_turn(
     )
 
 
+def _answer_only(content: types.Content) -> types.Content:
+    """The model turn with server-side tool traffic stripped, for committing to history.
+
+    #68 D7 commits only the prompt and the final answer, never intermediate tool turns —
+    but the API returns server-side tool_call/tool_response parts *inside the same content
+    object* as the answer, so they ride along unless removed. Those parts hold retrieved web
+    page text. Leaving them in history would carry untrusted content into the next call in
+    the session, which may be write-capable — defeating the web-XOR-write rule (#76 D4)
+    across two calls even though each call honours it. Text parts keep their
+    thought_signature.
+    """
+    kept = [
+        p
+        for p in content.parts or []
+        if p.tool_call is None and p.tool_response is None and p.function_call is None
+    ]
+    return types.Content(role=content.role, parts=kept)
+
+
 def _answer(candidate: types.Candidate) -> LoopResult:
     content = candidate.content or types.Content(role="model", parts=[])
     text = "".join(p.text for p in content.parts or [] if p.text and not p.thought)
@@ -145,7 +237,7 @@ def _answer(candidate: types.Candidate) -> LoopResult:
         reason = candidate.finish_reason.name if candidate.finish_reason else "UNKNOWN"
         _log.warning("Gemini returned no text (finish_reason=%s)", reason)
         raise ClientError(f"Gemini returned no text (finish_reason={reason}).")
-    return LoopResult(text=text, content=content)
+    return LoopResult(text=text, content=_answer_only(content))
 
 
 async def run_tool_loop(
@@ -161,6 +253,7 @@ async def run_tool_loop(
     history = list(contents)
     for _ in range(max_rounds):
         candidate = await _generate_turn(generate, history, allow_tools=True)
+        record_grounding(candidate, records)
         content = candidate.content
         calls = (
             [p.function_call for p in (content.parts or []) if p.function_call] if content else []
@@ -182,4 +275,6 @@ async def run_tool_loop(
     history.append(
         types.Content(role="user", parts=[types.Part.from_text(text=BUDGET_EXHAUSTED_PROMPT)])
     )
-    return _answer(await _generate_turn(generate, history, allow_tools=False))
+    final = await _generate_turn(generate, history, allow_tools=False)
+    record_grounding(final, records)
+    return _answer(final)

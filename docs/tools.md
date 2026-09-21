@@ -3,9 +3,16 @@
 Six tools: five inference tools (`gemini_ask`, `gemini_brainstorm`, `gemini_review`,
 `gemini_debug`, `gemini_architect`) and one discovery utility (`gemini_list_models`).
 
-The five inference tools share three optional parameters:
+The five inference tools share four optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; falls back to `default_thinking` in config
-- `session_name: str` — session identifier; v1 always uses the default session per tool
+- `session_name: str` — which conversation to continue (default `"default"`). Calls sharing a
+  name continue one Gemini conversation; a new name starts fresh. Sessions are separate per
+  tool and per model, live in memory until the server restarts, and the least recently used is
+  dropped past 50. **After a `web=true` call, use a new name before asking for writes** — see
+  [What persists between calls](#what-persists-between-calls).
+- `web: bool` — let Gemini search the web and fetch URLs for this call; omit to use
+  `web_tools.enabled`. **While web access is on, `write_file` is withheld** — see
+  [Web access](#web-access).
 - `model: str` — `flash` / `flash-lite` / `pro` for the newest release of a family, or any Gemini
   model id; omit for the server default (the newest Flash, resolved at startup). The
   parameter's description is **backend-aware** (it lists the models valid for your active
@@ -66,11 +73,16 @@ not just to Gemini, so a Claude session knows to name paths instead of pasting f
 knows which calls may touch the working tree. All three channels are computed from the live
 workspace at registration, so they cannot drift from the capability actually wired up:
 
-- **Server instructions** — the sandbox root, the deny-list, the directories `glob`/`grep` skip,
-  the read/write capability rows and the write cap, plus everything that reaches disk on any
-  call: the transcript path and which tools save artifacts. When file tools are off, this states
-  the reason instead — and still discloses the transcript and artifact writes, which happen
-  either way.
+- **Server instructions** — a short overview sent on connect: each tool in one line, the
+  sandbox root and deny summary, which tools can `write_file`, when to use `web=true` and the
+  new-`session_name` rule, and the parameters that change behavior. Claude Code keeps only about
+  the first 2048 characters of a server's instructions and silently drops the rest (#78), so
+  this text is held under 2000 characters in every configuration, and a test enforces that.
+  When file tools are off, it states the reason instead.
+- **`gemini_help`** — the detail that does not fit: the full deny-list, the directories
+  `glob`/`grep` skip, the result caps and write cap, the web rules, sessions, and everything that
+  reaches disk on any call (the transcript path and which tools save artifacts). Call it with a
+  `topic` (see [gemini_help](#gemini_help)) or with none for everything.
 - **Tool descriptions** — each tool's description ends with its own repository-access sentence
   and a "Writes to disk" clause naming the transcript entry, `write_file` where the tool has it,
   and the artifact if it saves one.
@@ -91,7 +103,7 @@ build the registry), the deny-list from `Sandbox.deny`, the skipped directories 
 So changing a tool's capability row means changing `_WRITE` / `_ARTIFACTS` in its module and
 nothing else — both the tool's own description and the server-level rows follow.
 
-The instructions also state that searches are **not exhaustive** — `glob`/`grep` skip the
+`gemini_help` (topic `files`) also states that searches are **not exhaustive** — `glob`/`grep` skip the
 directories above, never follow symlinked directories, and cap their results (flagged
 `truncated=true`), and `read_file` refuses binary files — so a caller does not read an empty
 `grep` as proof that a symbol is absent.
@@ -104,6 +116,91 @@ against what the text promised, so wording that over- or under-claims fails the 
 The reply ends with `[gemini-bridge] artifact saved: <path>`. If saving fails you still get the
 answer, plus a `[gemini-bridge notice] artifact not saved: …` line. Artifacts are saved even when
 `file_tools.enabled` is `false`.
+
+---
+
+## Web access
+
+Gemini can search the web and fetch URLs during a call, using the Gemini API's **built-in**
+`google_search` and `url_context`. Unlike the file tools, the bridge does not execute these —
+the API runs them server-side and returns the result inside the same response. There is no
+sandbox to enforce and no handler to write; what the bridge decides is only whether to attach
+them.
+
+**Turning it on.** `web_tools.enabled` in config sets the default (ships `false`). Every
+generating tool takes `web: bool | null`, where `null` uses the config default:
+
+```
+gemini_ask(prompt="...", web=true)
+```
+
+Grounding is billed per request whenever the tools are attached, even if Gemini does not
+search — which is why the default is off.
+
+### Web access and `write_file` are mutually exclusive
+
+**If web access is on for a call, `write_file` is not offered to Gemini at all.**
+
+A web page is attacker-controlled text. Once it is in the context of a call that can write to
+your repository, *"write this to `setup.sh`"* is a plausible instruction for the model to
+follow. The deny-list blocks `.git`, `.env` and key files, but a CI workflow, a test file or a
+shell script inside the repo are all writable and all consequential.
+
+The cost is low, because the bridge writes artifacts itself: a web-enabled `gemini_review`
+still produces its artifact. What it loses is Gemini writing directly into the tree during that
+same call. When you want both, make two calls — one with `web=true` to research, one with
+`web=false` to write.
+
+One function, `resolve_capabilities()` in `web_tools.py`, implements this rule, and both the
+runtime and the advertised metadata call it, so a tool's description can never claim a
+capability the call does not have.
+
+### What is recorded
+
+Server-side calls never reach `ToolRegistry`, so they would otherwise leave no trace. Grounding
+metadata is written into the transcript beside the file-tool calls:
+
+```
+- → read_file(path='src/gemini_bridge/web_tools.py') → 3.6 KiB
+- → google_search(query='"url_context" google-genai sdk') → 2 source(s): google.com, google.dev
+```
+
+Searches and URL fetches are recorded separately, because the API reports them separately:
+searches arrive in `grounding_metadata`, fetches in `url_context_metadata`. A fetch that
+produces no grounding chunks is still logged with its URL, and a failed retrieval is logged as
+a failure — otherwise a URL could enter the context leaving no trace.
+
+Sources are recorded by **title** (the site), not by `uri` — the URI is an opaque
+`vertexaisearch` redirect that tells a transcript reader nothing.
+
+### What persists between calls
+
+The exclusion above is per call, so session history has to be handled too. The API returns its
+server-side `tool_call` / `tool_response` parts — which hold retrieved page text — inside the
+same object as the answer. The bridge strips them before committing the turn to session
+history, keeping only the answer. Without that, a later `web=false` call in the same session
+would replay the retrieved text *and* hold `write_file`: two calls each honouring the rule
+would together defeat it.
+
+**Residual risk:** Gemini's own answer does persist, and an injection that survived into that
+answer would persist with it. That answer was returned to you first, so it is visible rather
+than silent, but it is not a guarantee. The clean reset is a new `session_name` for the call that
+writes — the server instructions tell every Claude session to do exactly that.
+
+### Limits and caveats
+
+- Retrieved content is untrusted. Gemini's system instruction says so explicitly, and the tool
+  descriptions tell the caller, but treat a web-grounded conclusion as a claim to check.
+- **Web access does not work on Vertex.** Not merely untested: the google-genai SDK raises
+  `ValueError: include_server_side_tool_invocations parameter is only supported in Gemini
+  Developer API mode` when converting the request. `google_search` and `url_context` themselves
+  convert fine, but the flag that lets them share a request with the bridge's file tools is
+  Developer-API only, and the file tools are almost always on. On a Vertex backend the bridge
+  drops web access rather than failing the call, and the reply opens with
+  `[gemini-bridge notice] Web access was requested but is unavailable on the <method> backend`.
+  The tool descriptions and server instructions say so too.
+- Other built-in tools the SDK exposes — `exa_ai_search`, `mcp_servers`, `code_execution`,
+  `file_search` — are deliberately not enabled.
 
 ---
 
@@ -341,3 +438,17 @@ flowchart TD
 ```
 
 See [configuration.md](configuration.md#choosing-a-model) for the recommended models per backend.
+
+---
+
+## gemini_help
+
+The full detail behind the short server instructions: the `--help` for Claude. It writes
+nothing and makes no Gemini call.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `topic` | string | all topics | `tools`, `files`, `web`, `sessions`, `disk`, or a generating tool's name (e.g. `gemini_review`) |
+
+Every topic is built from the live configuration, the same way the instructions are, so it
+always matches what the server actually does. An unknown topic returns the list of valid ones.
