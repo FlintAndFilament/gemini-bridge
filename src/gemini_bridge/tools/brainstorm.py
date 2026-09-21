@@ -25,6 +25,7 @@ from pydantic import Field
 from gemini_bridge.client import GeminiClient
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.tools.base import (
+    SESSION_PARAM_HINT,
     ArtifactMode,
     ToolCapability,
     ToolResult,
@@ -50,13 +51,17 @@ _WRITE = True
 # Artifact only when the caller passes write_artifact=true.
 _ARTIFACTS: ArtifactMode = "opt-in"
 
-# The capability row server.py advertises; keep _WRITE/_ARTIFACTS above as the source.
-CAPABILITY = ToolCapability(name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS)
-
 # Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
 _DESCRIPTION = (
     "Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the "
     "current direction and play devil's advocate."
+)
+
+
+# The capability row server.py advertises; _WRITE, _ARTIFACTS and _DESCRIPTION above
+# stay the single source for each field.
+CAPABILITY = ToolCapability(
+    name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS, summary=_DESCRIPTION
 )
 
 
@@ -94,9 +99,7 @@ def register(
                 description="Reasoning depth: none, low, medium, high. Defaults to config setting."
             ),
         ] = None,
-        session_name: Annotated[
-            str, Field(description="Session name for conversation continuity.")
-        ] = "default",
+        session_name: Annotated[str, Field(description=SESSION_PARAM_HINT)] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
         web: Annotated[
             Optional[bool],

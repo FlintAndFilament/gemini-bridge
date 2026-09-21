@@ -32,6 +32,7 @@ from mcp.types import ToolAnnotations
 
 from gemini_bridge import models
 from gemini_bridge.client import (
+    MAX_SESSIONS,
     ClientError,
     GeminiClient,
     _is_retryable,
@@ -88,6 +89,7 @@ class ToolCapability:
     name: str
     write: bool
     artifacts: ArtifactMode
+    summary: str = ""  # the tool's own description, reused for "choosing a tool" (#74)
 
 
 def deny_note(sandbox: Sandbox) -> str:
@@ -219,6 +221,17 @@ def tool_annotations(workspace: Optional[Workspace], *, write: bool) -> ToolAnno
         idempotentHint=False,
         openWorldHint=True,  # every call reaches the Gemini API
     )
+
+
+# Shared by all five generating tools, so the description cannot drift per tool again —
+# gemini_ask's copy had said "v1: always 'default'" long after names started working.
+SESSION_PARAM_HINT = (
+    "Named conversation to continue. Calls that share a name continue one Gemini conversation; "
+    "a new name starts fresh. Sessions are separate per tool and per model, live in memory "
+    f"until the server restarts, and the least recently used is dropped past {MAX_SESSIONS}. "
+    "After a web=true call, switch to a new name before asking for writes, so the earlier "
+    "answer cannot carry retrieved content into a call that holds write_file."
+)
 
 
 def model_param_hint(client: GeminiClient) -> str:

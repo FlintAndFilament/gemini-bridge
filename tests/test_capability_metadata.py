@@ -519,3 +519,65 @@ class TestListModelsAnnotations:
     def test_every_registered_tool_carries_annotations(self, tmp_path: Path) -> None:
         for name, tool in _tools(_server(tmp_path, _workspace(tmp_path))).items():
             assert tool.annotations is not None, f"{name} has no annotations"
+
+
+class TestHelpText:
+    """What a Claude session learns about *using* the bridge, not only what it can do."""
+
+    def _params(self, tmp_path: Path, tool: str) -> dict[str, str]:
+        props = _tools(_server(tmp_path, _workspace(tmp_path)))[tool].inputSchema["properties"]
+        return {k: v.get("description", "") for k, v in props.items()}
+
+    def test_session_name_description_is_identical_on_every_tool(self, tmp_path: Path) -> None:
+        """Five hand-written copies drifted: gemini_ask's said 'v1: always default' long after
+        session names started working. One shared definition keeps them aligned."""
+        seen = {self._params(tmp_path, t)["session_name"] for t in GENERATING_TOOLS}
+        assert len(seen) == 1
+
+    def test_session_name_description_is_accurate(self, tmp_path: Path) -> None:
+        from gemini_bridge.client import MAX_SESSIONS
+
+        text = self._params(tmp_path, "gemini_ask")["session_name"]
+        assert "always 'default'" not in text
+        assert "per tool and per model" in text
+        assert str(MAX_SESSIONS) in text
+
+    def test_sessions_really_are_keyed_by_name(self) -> None:
+        """Cross-check the claim against the client, not just the string."""
+        client = _client()
+        a = client.get_or_create_session(name="gemini_ask:one")
+        b = client.get_or_create_session(name="gemini_ask:two")
+        assert a is not b
+        assert client.get_or_create_session(name="gemini_ask:one") is a
+
+    def test_choosing_a_tool_lists_every_tool_with_its_own_description(
+        self, tmp_path: Path
+    ) -> None:
+        from gemini_bridge.tools import CAPABILITIES
+
+        text = server_instructions(_workspace(tmp_path))
+        assert "Choosing a tool:" in text
+        for cap in CAPABILITIES:
+            assert f"- {cap.name}: {cap.summary}" in text
+
+    def test_tool_guide_reuses_the_registered_description(self, tmp_path: Path) -> None:
+        """No restatement: the guide line must be the same words the tool itself advertises."""
+        from gemini_bridge.tools import CAPABILITIES
+
+        tools = _tools(_server(tmp_path, _workspace(tmp_path)))
+        for cap in CAPABILITIES:
+            assert (tools[cap.name].description or "").startswith(cap.summary)
+
+    def test_instructions_say_when_to_reach_for_web(self, tmp_path: Path) -> None:
+        text = server_instructions(_workspace(tmp_path))
+        assert "Use web=true when" in text
+        assert "stale" in text
+
+    def test_fresh_session_advice_accompanies_the_exclusion(self, tmp_path: Path) -> None:
+        text = server_instructions(_workspace(tmp_path))
+        assert "new session_name" in text
+
+    def test_no_fresh_session_advice_without_writes(self, tmp_path: Path) -> None:
+        """With file tools off there is no write to protect, so the advice would mislead."""
+        text = server_instructions(_workspace(tmp_path, enabled=False))
+        assert "new session_name" not in text
