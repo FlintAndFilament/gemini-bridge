@@ -73,6 +73,12 @@ class FileToolsConfig(BaseModel):
     max_write_bytes: int = Field(default=262_144, gt=0)
 
 
+class WebToolsConfig(BaseModel):
+    """Gemini's server-side web tools. Off by default: grounding bills per request."""
+
+    enabled: bool = False  # the default answer for a call's `web` argument
+
+
 class Config(BaseModel):
     project: Optional[str] = None  # required for adc/env/keychain; unused for api_key
     location: str = "global"
@@ -84,6 +90,7 @@ class Config(BaseModel):
     # Where gemini_architect / gemini_review (and opted-in brainstorm) save their output.
     artifacts_dir: str = "./gemini-artifacts"
     file_tools: FileToolsConfig = FileToolsConfig()
+    web_tools: WebToolsConfig = WebToolsConfig()
     auth: AuthConfig = AuthConfig()
 
     @model_validator(mode="after")

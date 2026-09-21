@@ -19,10 +19,12 @@ Let Gemini search the web and fetch URLs during a call, using the Gemini API's o
 | D3 | All five generating tools may use web access. No per-use-case or per-persona restriction. |
 | D4 | **Web access and `write_file` are mutually exclusive within a call.** If web is on, `write_file` is not offered to Gemini at all. |
 | D5 | `web_tools.enabled` config sets the default; shipped **`false`**. Every tool takes `web: bool \| None = None`, where `None` resolves to the config default — the same tri-state as `thinking`. |
-| D6 | `tool_config.include_server_side_tool_invocations=True` whenever web tools are attached. Without it the API rejects built-in tools alongside our `function_declarations` with a 400. |
+| D6 | `tool_config.include_server_side_tool_invocations=True` whenever web tools are attached — Developer API only (D11). Without it the API rejects built-in tools alongside our `function_declarations` with a 400. |
 | D7 | One function, `resolve_capabilities()`, owns D4. Both the runtime and the #74 capability metadata call it, so the advertised text cannot disagree with what the call actually does. |
 | D8 | Search queries and grounding sources are recorded in the transcript beside file-tool calls. |
 | D9 | Not a `breaking-change`: tools only gain an optional parameter, and the default is off. |
+| D10 | Server-side tool parts are stripped from the turn committed to session history, so retrieved page text does not outlive the call that fetched it. Without this, D4 was defeatable across two calls in one session (code review). |
+| D11 | Web access is unavailable on Vertex; it is dropped with a visible notice rather than failing the call. |
 
 ### Why D4, stated plainly
 
@@ -53,7 +55,9 @@ The cost of exclusion is low because **the bridge writes artifacts itself** (D4 
 
 ### What does *not* change
 
-`tool_loop` already dispatches only on `p.function_call` (`tool_loop.py:166`), so the server-side `tool_call` / `tool_response` parts are ignored for dispatch — no loop change is needed to stay safe. Text extraction already filters `p.text and not p.thought`, which remains correct. The parts are committed to history with their `thought_signature` intact, which is what we want.
+`tool_loop` already dispatches only on `p.function_call` (`tool_loop.py:166`), so the server-side `tool_call` / `tool_response` parts are ignored for dispatch — no loop change is needed to stay safe. Text extraction already filters `p.text and not p.thought`, which remains correct.
+
+What *did* need changing: those parts were being committed to session history along with the answer, because the API returns them inside the same content object. `_answer_only()` now strips them (D10). Text parts keep their `thought_signature`.
 
 ## 4. Data flow
 
@@ -106,4 +110,4 @@ grounding_metadata.grounding_chunks   → 2
 
 - `exa_ai_search`, `mcp_servers`, `code_execution`, `file_search` — available on the same `types.Tool`, deliberately not enabled here. One trust decision at a time.
 - Per-request spend caps. The API governs server-side invocation counts; we do not control them.
-- **Vertex parity is unverified.** This machine is `api_key`-only with no GCP credentials, so `include_server_side_tool_invocations` on Vertex is untested. It must be confirmed on the work laptop before the capability is described as backend-independent; until then the docs say so.
+- **Vertex is not supported — now known, not assumed.** Code review found that `google-genai` raises `ValueError` converting `include_server_side_tool_invocations` for Vertex; the flag is Developer-API only. The bridge gates on `client.web_supported`, drops web access there, and says so in the reply and in both metadata channels. Enabling it needs an upstream change, not a test on the work laptop.
