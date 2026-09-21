@@ -73,11 +73,16 @@ not just to Gemini, so a Claude session knows to name paths instead of pasting f
 knows which calls may touch the working tree. All three channels are computed from the live
 workspace at registration, so they cannot drift from the capability actually wired up:
 
-- **Server instructions** — the sandbox root, the deny-list, the directories `glob`/`grep` skip,
-  the read/write capability rows and the write cap, plus everything that reaches disk on any
-  call: the transcript path and which tools save artifacts. When file tools are off, this states
-  the reason instead — and still discloses the transcript and artifact writes, which happen
-  either way.
+- **Server instructions** — a short overview sent on connect: each tool in one line, the
+  sandbox root and deny summary, which tools can `write_file`, when to use `web=true` and the
+  new-`session_name` rule, and the parameters that change behavior. Claude Code keeps only about
+  the first 2048 characters of a server's instructions and silently drops the rest (#78), so
+  this text is held under 2000 characters in every configuration, and a test enforces that.
+  When file tools are off, it states the reason instead.
+- **`gemini_help`** — the detail that does not fit: the full deny-list, the directories
+  `glob`/`grep` skip, the result caps and write cap, the web rules, sessions, and everything that
+  reaches disk on any call (the transcript path and which tools save artifacts). Call it with a
+  `topic` (see [gemini_help](#gemini_help)) or with none for everything.
 - **Tool descriptions** — each tool's description ends with its own repository-access sentence
   and a "Writes to disk" clause naming the transcript entry, `write_file` where the tool has it,
   and the artifact if it saves one.
@@ -98,7 +103,7 @@ build the registry), the deny-list from `Sandbox.deny`, the skipped directories 
 So changing a tool's capability row means changing `_WRITE` / `_ARTIFACTS` in its module and
 nothing else — both the tool's own description and the server-level rows follow.
 
-The instructions also state that searches are **not exhaustive** — `glob`/`grep` skip the
+`gemini_help` (topic `files`) also states that searches are **not exhaustive** — `glob`/`grep` skip the
 directories above, never follow symlinked directories, and cap their results (flagged
 `truncated=true`), and `read_file` refuses binary files — so a caller does not read an empty
 `grep` as proof that a symbol is absent.
@@ -433,3 +438,17 @@ flowchart TD
 ```
 
 See [configuration.md](configuration.md#choosing-a-model) for the recommended models per backend.
+
+---
+
+## gemini_help
+
+The full detail behind the short server instructions: the `--help` for Claude. It writes
+nothing and makes no Gemini call.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `topic` | string | all topics | `tools`, `files`, `web`, `sessions`, `disk`, or a generating tool's name (e.g. `gemini_review`) |
+
+Every topic is built from the live configuration, the same way the instructions are, so it
+always matches what the server actually does. An unknown topic returns the list of valid ones.

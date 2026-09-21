@@ -11,7 +11,8 @@ Design notes:
   - Open/Closed: new tools add a module here + one import line — server.py unchanged
 
 Used by:  server.py (registers all tools)
-Imports:  tools/ask.py, tools/brainstorm.py, tools/review.py, tools/debug.py, tools/architect.py
+Imports:  tools/ask.py, tools/brainstorm.py, tools/review.py, tools/debug.py, tools/architect.py,
+          tools/list_models.py, tools/help.py
 """
 
 from gemini_bridge.tools.architect import CAPABILITY as CAPABILITY_ARCHITECT
@@ -23,6 +24,8 @@ from gemini_bridge.tools.brainstorm import CAPABILITY as CAPABILITY_BRAINSTORM
 from gemini_bridge.tools.brainstorm import register as register_brainstorm
 from gemini_bridge.tools.debug import CAPABILITY as CAPABILITY_DEBUG
 from gemini_bridge.tools.debug import register as register_debug
+from gemini_bridge.tools.help import HELP_TOOL_NAME
+from gemini_bridge.tools.help import register as register_help
 from gemini_bridge.tools.list_models import LIST_MODELS_TOOL_NAME
 from gemini_bridge.tools.list_models import register as register_list_models
 from gemini_bridge.tools.review import CAPABILITY as CAPABILITY_REVIEW
@@ -44,6 +47,8 @@ __all__ = [
     "register_debug",
     "register_architect",
     "register_list_models",
+    "register_help",
     "CAPABILITIES",
     "LIST_MODELS_TOOL_NAME",
+    "HELP_TOOL_NAME",
 ]
