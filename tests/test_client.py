@@ -6,8 +6,8 @@ import pytest
 from google.genai import types
 
 from gemini_bridge.client import (
-    _MAX_SESSIONS,
     DEFAULT_MODEL,
+    MAX_SESSIONS,
     ClientError,
     GeminiClient,
     Session,
@@ -75,12 +75,12 @@ class TestSessionManagement:
 
     def test_session_cache_evicts_oldest_when_full(self) -> None:
         client = _make_client()
-        for i in range(_MAX_SESSIONS + 1):
+        for i in range(MAX_SESSIONS + 1):
             client.get_or_create_session(f"session:{i}")
 
-        assert len(client._sessions) == _MAX_SESSIONS
+        assert len(client._sessions) == MAX_SESSIONS
         assert f"session:0:{DEFAULT_MODEL}" not in client._sessions
-        assert f"session:{_MAX_SESSIONS}:{DEFAULT_MODEL}" in client._sessions
+        assert f"session:{MAX_SESSIONS}:{DEFAULT_MODEL}" in client._sessions
 
 
 class TestThinkingConfig:

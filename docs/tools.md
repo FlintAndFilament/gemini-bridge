@@ -5,7 +5,11 @@ Six tools: five inference tools (`gemini_ask`, `gemini_brainstorm`, `gemini_revi
 
 The five inference tools share four optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; falls back to `default_thinking` in config
-- `session_name: str` — session identifier; v1 always uses the default session per tool
+- `session_name: str` — which conversation to continue (default `"default"`). Calls sharing a
+  name continue one Gemini conversation; a new name starts fresh. Sessions are separate per
+  tool and per model, live in memory until the server restarts, and the least recently used is
+  dropped past 50. **After a `web=true` call, use a new name before asking for writes** — see
+  [What persists between calls](#what-persists-between-calls).
 - `web: bool` — let Gemini search the web and fetch URLs for this call; omit to use
   `web_tools.enabled`. **While web access is on, `write_file` is withheld** — see
   [Web access](#web-access).
@@ -175,7 +179,8 @@ would together defeat it.
 
 **Residual risk:** Gemini's own answer does persist, and an injection that survived into that
 answer would persist with it. That answer was returned to you first, so it is visible rather
-than silent, but it is not a guarantee. Starting a fresh session is the clean reset.
+than silent, but it is not a guarantee. The clean reset is a new `session_name` for the call that
+writes — the server instructions tell every Claude session to do exactly that.
 
 ### Limits and caveats
 

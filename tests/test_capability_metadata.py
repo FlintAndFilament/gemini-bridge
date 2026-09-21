@@ -519,3 +519,87 @@ class TestListModelsAnnotations:
     def test_every_registered_tool_carries_annotations(self, tmp_path: Path) -> None:
         for name, tool in _tools(_server(tmp_path, _workspace(tmp_path))).items():
             assert tool.annotations is not None, f"{name} has no annotations"
+
+
+class TestHelpText:
+    """What a Claude session learns about *using* the bridge, not only what it can do."""
+
+    def _params(self, tmp_path: Path, tool: str) -> dict[str, str]:
+        props = _tools(_server(tmp_path, _workspace(tmp_path)))[tool].inputSchema["properties"]
+        return {k: v.get("description", "") for k, v in props.items()}
+
+    def test_session_name_shares_one_base_on_every_tool(self, tmp_path: Path) -> None:
+        """Five hand-written copies drifted: gemini_ask's said 'v1: always default' long after
+        session names started working. Every tool now starts from one shared base."""
+        from gemini_bridge.tools.base import _SESSION_BASE
+
+        for tool in GENERATING_TOOLS:
+            assert self._params(tmp_path, tool)["session_name"].startswith(_SESSION_BASE)
+
+    @pytest.mark.parametrize("tool", WRITE_TOOLS)
+    def test_write_tools_get_the_switch_names_advice(self, tmp_path: Path, tool: str) -> None:
+        assert "new name before asking for writes" in self._params(tmp_path, tool)["session_name"]
+
+    @pytest.mark.parametrize("tool", READ_ONLY_TOOLS)
+    def test_read_only_tools_do_not(self, tmp_path: Path, tool: str) -> None:
+        """gemini_ask can never write; telling Claude to abandon its session would cost
+        conversation continuity for nothing (review finding)."""
+        assert "writes" not in self._params(tmp_path, tool)["session_name"]
+
+    @pytest.mark.parametrize("tool", WRITE_TOOLS)
+    def test_no_switch_advice_with_file_tools_off(self, tmp_path: Path, tool: str) -> None:
+        props = _tools(_server(tmp_path, _workspace(tmp_path, enabled=False)))[tool].inputSchema
+        assert "writes" not in props["properties"]["session_name"]["description"]
+
+    def test_tool_web_note_matches_the_server_advice(self, tmp_path: Path) -> None:
+        """The tool's own description and the server instructions must give the same advice."""
+        described = _tools(_server(tmp_path, _workspace(tmp_path)))["gemini_review"].description
+        assert "new session_name" in (described or "")
+
+    def test_session_name_description_is_accurate(self, tmp_path: Path) -> None:
+        from gemini_bridge.client import MAX_SESSIONS
+
+        text = self._params(tmp_path, "gemini_ask")["session_name"]
+        assert "always 'default'" not in text
+        assert "per tool and per model" in text
+        assert str(MAX_SESSIONS) in text
+
+    def test_sessions_really_are_keyed_by_name(self) -> None:
+        """Cross-check the claim against the client, not just the string."""
+        client = _client()
+        a = client.get_or_create_session(name="gemini_ask:one")
+        b = client.get_or_create_session(name="gemini_ask:two")
+        assert a is not b
+        assert client.get_or_create_session(name="gemini_ask:one") is a
+
+    def test_choosing_a_tool_lists_every_tool_with_its_own_description(
+        self, tmp_path: Path
+    ) -> None:
+        from gemini_bridge.tools import CAPABILITIES
+
+        text = server_instructions(_workspace(tmp_path))
+        assert "Choosing a tool:" in text
+        for cap in CAPABILITIES:
+            assert f"- {cap.name}: {cap.summary}" in text
+
+    def test_tool_guide_reuses_the_registered_description(self, tmp_path: Path) -> None:
+        """No restatement: the guide line must be the same words the tool itself advertises."""
+        from gemini_bridge.tools import CAPABILITIES
+
+        tools = _tools(_server(tmp_path, _workspace(tmp_path)))
+        for cap in CAPABILITIES:
+            assert (tools[cap.name].description or "").startswith(cap.summary)
+
+    def test_instructions_say_when_to_reach_for_web(self, tmp_path: Path) -> None:
+        text = server_instructions(_workspace(tmp_path))
+        assert "Use web=true when" in text
+        assert "stale" in text
+
+    def test_fresh_session_advice_accompanies_the_exclusion(self, tmp_path: Path) -> None:
+        text = server_instructions(_workspace(tmp_path))
+        assert "new session_name" in text
+
+    def test_no_fresh_session_advice_without_writes(self, tmp_path: Path) -> None:
+        """With file tools off there is no write to protect, so the advice would mislead."""
+        text = server_instructions(_workspace(tmp_path, enabled=False))
+        assert "new session_name" not in text

@@ -71,12 +71,23 @@ def _preview(value: Any) -> str:
     return text
 
 
+def _size(n: int) -> str:
+    return f"{n / 1024:.1f} KiB" if n >= 1024 else f"{n} B"
+
+
 def summarize(result: dict[str, Any]) -> tuple[bool, str]:
-    """(ok, short summary) for a handler result: the error text, or the result's size."""
+    """(ok, short summary) for a handler result: the error text, or what the call amounted to.
+
+    For a write, that is the size of the file written. For everything else it is the size of
+    the result returned into Gemini's context, which is what a read actually cost. Reporting
+    the response size for writes too made a 5-byte file log as "50 B" — the size of the
+    {"path", "bytes_written"} acknowledgement, which a reader takes for the file.
+    """
     if "error" in result:
         return False, str(result["error"])
-    size = len(json.dumps(result, ensure_ascii=False).encode())
-    return True, f"{size / 1024:.1f} KiB" if size >= 1024 else f"{size} B"
+    if "bytes_written" in result:
+        return True, f"wrote {_size(int(result['bytes_written']))}"
+    return True, _size(len(json.dumps(result, ensure_ascii=False).encode()))
 
 
 class ToolRegistry:

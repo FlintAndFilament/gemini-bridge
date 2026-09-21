@@ -190,3 +190,40 @@ class TestRunToolLoop:
         result = await run_tool_loop(model, _user("q"), _registry([]), [])
         assert result.content.role == "model"
         assert result.content.parts[0].text == "final"  # type: ignore[index]
+
+
+class TestSummarize:
+    """The one-line result summary written into the transcript for each tool call."""
+
+    def test_write_reports_the_file_size_not_the_response_size(self) -> None:
+        """A 5-byte write used to log as '50 B' — the size of the JSON acknowledgement,
+        which a reader naturally takes for the size of the file."""
+        from gemini_bridge.tool_loop import summarize
+
+        ok, summary = summarize({"path": "probe.txt", "bytes_written": 5})
+        assert ok is True
+        assert summary == "wrote 5 B"
+
+    def test_large_write_uses_kib(self) -> None:
+        from gemini_bridge.tool_loop import summarize
+
+        assert summarize({"path": "big.txt", "bytes_written": 4096})[1] == "wrote 4.0 KiB"
+
+    def test_empty_write_is_reported_honestly(self) -> None:
+        from gemini_bridge.tool_loop import summarize
+
+        assert summarize({"path": "empty.txt", "bytes_written": 0})[1] == "wrote 0 B"
+
+    def test_reads_still_report_what_came_back_into_context(self) -> None:
+        """For reads the response size is the useful number: it is what the call cost."""
+        from gemini_bridge.tool_loop import summarize
+
+        ok, summary = summarize({"content": "x" * 2048})
+        assert ok is True
+        assert summary.endswith("KiB")
+        assert not summary.startswith("wrote")
+
+    def test_errors_are_unchanged(self) -> None:
+        from gemini_bridge.tool_loop import summarize
+
+        assert summarize({"error": "rejected: denied"}) == (False, "rejected: denied")

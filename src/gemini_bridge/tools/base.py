@@ -32,6 +32,7 @@ from mcp.types import ToolAnnotations
 
 from gemini_bridge import models
 from gemini_bridge.client import (
+    MAX_SESSIONS,
     ClientError,
     GeminiClient,
     _is_retryable,
@@ -88,6 +89,7 @@ class ToolCapability:
     name: str
     write: bool
     artifacts: ArtifactMode
+    summary: str = ""  # the tool's own description, reused for "choosing a tool" (#74)
 
 
 def deny_note(sandbox: Sandbox) -> str:
@@ -145,7 +147,8 @@ def _web_note(default: bool, write_capable: bool, supported: bool = True) -> str
     if write_capable:
         note += (
             " While web access is on, write_file is withheld from this tool and Gemini cannot "
-            "modify the working tree; make a second call with web=false to write."
+            "modify the working tree; to write, make a second call with web=false and a new "
+            "session_name."
         )
     return note
 
@@ -219,6 +222,32 @@ def tool_annotations(workspace: Optional[Workspace], *, write: bool) -> ToolAnno
         idempotentHint=False,
         openWorldHint=True,  # every call reaches the Gemini API
     )
+
+
+# The shared part of every generating tool's session_name description. Built in one place so
+# it cannot drift per tool again — gemini_ask's copy had said "v1: always 'default'" long
+# after session names started working.
+_SESSION_BASE = (
+    "Named conversation to continue. Calls that share a name continue one Gemini conversation; "
+    "a new name starts fresh. Sessions are separate per tool and per model, live in memory "
+    f"until the server restarts, and the least recently used is dropped past {MAX_SESSIONS}."
+)
+_SESSION_WRITE_ADVICE = (
+    " After a web=true call, switch to a new name before asking for writes, so the earlier "
+    "answer cannot carry retrieved content into a call that holds write_file."
+)
+
+
+def session_param_hint(workspace: Optional[Workspace], *, write: bool) -> str:
+    """The session_name description for one tool.
+
+    The advice to switch names before writing only applies where write_file can actually be
+    offered — a write-capable tool with file tools on. Giving it to gemini_ask, or with the
+    kill switch on, would make Claude abandon a conversation it could have kept.
+    """
+    if write and workspace is not None and workspace.tools_enabled:
+        return _SESSION_BASE + _SESSION_WRITE_ADVICE
+    return _SESSION_BASE
 
 
 def model_param_hint(client: GeminiClient) -> str:

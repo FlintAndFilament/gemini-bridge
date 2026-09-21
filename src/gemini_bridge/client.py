@@ -98,7 +98,7 @@ _LEVEL_REJECTED = re.compile(r"Thinking level (\w+) is not supported for this mo
 _LEVEL_UNSUPPORTED = "Thinking level is not supported for this model"
 _BUDGET_ZERO_REJECTED = re.compile(r"Budget 0 is invalid|only works in thinking mode")
 
-_MAX_SESSIONS = 50  # LRU cap; oldest session evicted when exceeded
+MAX_SESSIONS = 50  # LRU cap; oldest session evicted when exceeded
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; doubles each attempt plus jitter
 
@@ -199,7 +199,7 @@ class GeminiClient:
         name: str = "default",
         model: Optional[str] = None,
     ) -> Session:
-        """Return existing session or create a new one (LRU-capped at _MAX_SESSIONS).
+        """Return existing session or create a new one (LRU-capped at MAX_SESSIONS).
 
         Sessions are keyed by (name, model) — changing the model creates a new session.
         Creating a session makes no API call.
@@ -215,7 +215,7 @@ class GeminiClient:
             return self._sessions[cache_key]
         session = Session(model=effective_model)
         self._sessions[cache_key] = session
-        if len(self._sessions) > _MAX_SESSIONS:
+        if len(self._sessions) > MAX_SESSIONS:
             evicted, _ = self._sessions.popitem(last=False)
             _log.debug("session cache evicted (LRU): %s", evicted)
         return session

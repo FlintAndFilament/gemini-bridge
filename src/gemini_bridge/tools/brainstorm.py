@@ -31,6 +31,7 @@ from gemini_bridge.tools.base import (
     call_gemini,
     capability_hint,
     model_param_hint,
+    session_param_hint,
     tool_annotations,
 )
 from gemini_bridge.transcript import TranscriptWriter
@@ -50,13 +51,17 @@ _WRITE = True
 # Artifact only when the caller passes write_artifact=true.
 _ARTIFACTS: ArtifactMode = "opt-in"
 
-# The capability row server.py advertises; keep _WRITE/_ARTIFACTS above as the source.
-CAPABILITY = ToolCapability(name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS)
-
 # Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
 _DESCRIPTION = (
     "Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the "
     "current direction and play devil's advocate."
+)
+
+
+# The capability row server.py advertises; _WRITE, _ARTIFACTS and _DESCRIPTION above
+# stay the single source for each field.
+CAPABILITY = ToolCapability(
+    name=_TOOL_NAME, write=_WRITE, artifacts=_ARTIFACTS, summary=_DESCRIPTION
 )
 
 
@@ -95,7 +100,7 @@ def register(
             ),
         ] = None,
         session_name: Annotated[
-            str, Field(description="Session name for conversation continuity.")
+            str, Field(description=session_param_hint(workspace, write=_WRITE))
         ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
         web: Annotated[
