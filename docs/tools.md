@@ -170,6 +170,20 @@ searches arrive in `grounding_metadata`, fetches in `url_context_metadata`. A fe
 produces no grounding chunks is still logged with its URL, and a failed retrieval is logged as
 a failure — otherwise a URL could enter the context leaving no trace.
 
+**Sources in the reply (#80).** A web-grounded answer ends with the pages it drew on, so the
+caller can check a claim instead of taking it on trust:
+
+```
+[gemini-bridge] Web sources (search links are Google redirects that open the real page):
+1. python.org — https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIa…
+2. https://docs.python.org/3/whatsnew/3.14.html
+```
+
+Search results come as Google's grounding redirect links, passed through unchanged. Resolving
+them to the real page URL would cost one extra request per source, so the bridge doesn't; open a
+link to reach the page. Successfully fetched URLs are listed as they are. The reply shows up to
+10 sources; the transcript logs all of them.
+
 Sources are recorded by **title** (the site), not by `uri` — the URI is an opaque
 `vertexaisearch` redirect that tells a transcript reader nothing.
 
