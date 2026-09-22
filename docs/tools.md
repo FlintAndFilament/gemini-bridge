@@ -170,19 +170,25 @@ searches arrive in `grounding_metadata`, fetches in `url_context_metadata`. A fe
 produces no grounding chunks is still logged with its URL, and a failed retrieval is logged as
 a failure — otherwise a URL could enter the context leaving no trace.
 
-**Sources in the reply (#80).** A web-grounded answer ends with the pages it drew on, so the
+**Sources in the reply (#80, #82).** A web-grounded answer ends with the pages it drew on, so the
 caller can check a claim instead of taking it on trust:
 
 ```
-[gemini-bridge] Web sources (search links are Google redirects that open the real page):
-1. python.org — https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIa…
+[gemini-bridge] Sources the bridge recorded from Google's grounding metadata (these are not typed by Gemini):
+1. ai.google.dev — https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview
 2. https://docs.python.org/3/whatsnew/3.14.html
 ```
 
-Search results come as Google's grounding redirect links, passed through unchanged. Resolving
-them to the real page URL would cost one extra request per source, so the bridge doesn't; open a
-link to reach the page. Successfully fetched URLs are listed as they are. The reply shows up to
-10 sources; the transcript logs all of them.
+The list comes from the API's grounding metadata, not from Gemini's text. Gemini is told not to
+write URLs itself, because when asked to cite it produces plausible but wrong ones.
+
+Search results arrive as Google's grounding redirect links
+(`vertexaisearch.cloud.google.com/grounding-api-redirect/…`). The bridge resolves each one with a
+single `HEAD` request that is not followed: the `302`'s `Location` is the real page. This costs
+**zero Gemini tokens**, downloads no page, and runs for all sources in parallel with a 3-second
+timeout. A source that does not resolve keeps its redirect link, marked `(unresolved Google
+redirect)`. Only grounding redirect links are requested; fetched URLs are already real and are
+listed as they are. The reply shows up to 30 sources; the transcript logs all of them.
 
 Sources are recorded by **title** (the site), not by `uri` — the URI is an opaque
 `vertexaisearch` redirect that tells a transcript reader nothing.
