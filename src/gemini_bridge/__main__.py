@@ -6,7 +6,7 @@ Entry point: python -m gemini_bridge
 Responsibilities:
   - Configure structured logging (file + stderr) before any other import runs
   - Load config from ~/.config/gemini-bridge/config.json
-  - Build credentials via auth.build_credentials()
+  - Build credentials via auth.build_auth()
   - Instantiate GeminiClient and TranscriptWriter
   - Build and run the MCP server
   - Report startup errors with actionable messages

@@ -24,8 +24,9 @@ Design notes:
 Raises:
   ClientError — wraps inference and session failures with context for Claude to surface
 
-Used by:  tools/*.py (via ask()), server.py (instantiates GeminiClient at startup)
-Imports:  config.py (Config, ThinkingLevel), auth.py (build_credentials)
+Used by:  tools/base.py (via ask()), __main__.py (instantiates GeminiClient at startup)
+Imports:  config.py (Config, ModelFamily, ThinkingLevel), models.py, errors.py (ClientError),
+          tool_loop.py (run_tool_loop), web_tools.py (web_tool_set)
 """
 
 import asyncio

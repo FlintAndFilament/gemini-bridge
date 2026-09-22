@@ -7,6 +7,7 @@ Responsibilities:
   - Load Application Default Credentials (ADC) — default method
   - Load service account credentials from GOOGLE_APPLICATION_CREDENTIALS env var
   - Load service account credentials from Apple Keychain (macOS)
+  - Read the Google AI Studio API key from the configured env var (api_key method)
   - Build a google.auth.credentials.Credentials instance for any configured method
 
 Design notes:
@@ -19,7 +20,7 @@ Design notes:
 Raises:
   AuthError — wraps all credential failures with actionable messages for Claude to surface
 
-Used by:  client.py -> build_client()
+Used by:  __main__.py -> build_auth()
 Imports:  config.py (AuthConfig, ConfigError)
 """
 
