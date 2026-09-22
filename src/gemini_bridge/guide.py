@@ -117,8 +117,8 @@ def _short_web(workspace: Optional[Workspace], default: bool, supported: bool) -
         return "Web: UNAVAILABLE on this backend; web=true is ignored with a notice."
     text = (
         f"Web: {'ON' if default else 'OFF'} by default. Pass web=true when the answer depends "
-        "on anything newer than Gemini's training data (versions, CVEs, current docs); treat "
-        "what it finds as claims to verify."
+        "on anything newer than Gemini's training data (versions, CVEs, current docs). The "
+        "answer lists its sources; treat what it finds as claims to verify."
     )
     if _writers(workspace):
         text += (
@@ -259,8 +259,9 @@ def _web_topic(workspace: Optional[Workspace], default: bool, supported: bool) -
     row = (
         f"Web access is {state}. Every generating tool takes web=true/false to override it for "
         f"one call. With it on, Gemini can {' and '.join(WEB_TOOL_NAMES)} through the Gemini "
-        "API — these run server-side, not in the bridge, and their queries and sources are "
-        "recorded in the transcript.\n\n"
+        "API — these run server-side, not in the bridge. The answer ends with the sources it "
+        "drew on (search links are Google redirects to the real page), and the transcript "
+        "records every query and source.\n\n"
         "- Use web=true when the answer depends on anything newer than the model's training "
         "data: current library or API versions, deprecations, CVEs, release notes, today's docs. "
         "Without it Gemini answers from memory and can state stale facts confidently, sometimes "
