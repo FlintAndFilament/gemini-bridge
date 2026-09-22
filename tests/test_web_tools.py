@@ -542,21 +542,24 @@ class TestSourcesReachTheCaller:
         assert sources == [("https://ok.test", "https://ok.test")]
 
     def test_footer_is_empty_without_sources(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, sources_footer
+        from gemini_bridge.sources import sources_footer
+        from gemini_bridge.tool_loop import ToolCallRecord
 
         assert sources_footer([ToolCallRecord("read_file", {}, True, "1 B")]) == ""
 
     def test_footer_lists_title_and_link_once_each(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, sources_footer
+        from gemini_bridge.sources import sources_footer
+        from gemini_bridge.tool_loop import ToolCallRecord
 
         rec = ToolCallRecord("google_search", {"query": "q"}, True, "", (("python.org", REDIRECT),))
         text = sources_footer([rec, rec])
         assert text.count(REDIRECT) == 1
         assert "python.org" in text
-        assert "redirect" in text.lower()  # the caller must know these are not the page URLs
+        assert "unresolved Google redirect" in text  # unresolved: the caller must know
 
     def test_footer_is_capped(self) -> None:
-        from gemini_bridge.tool_loop import MAX_SOURCES, ToolCallRecord, sources_footer
+        from gemini_bridge.sources import MAX_SOURCES, sources_footer
+        from gemini_bridge.tool_loop import ToolCallRecord
 
         many = tuple((f"s{i}", f"https://s{i}.test") for i in range(MAX_SOURCES + 3))
         text = sources_footer([ToolCallRecord("google_search", {}, True, "", many)])
@@ -585,9 +588,45 @@ class TestSourcesReachTheCaller:
         )
         transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
         mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
-        result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
+        real = "https://www.python.org/downloads/"
+        resolver = AsyncMock(return_value={REDIRECT: real})
+        with patch("gemini_bridge.tools.base.resolve_redirects", resolver):
+            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
         blocks = result[0] if isinstance(result, tuple) else result
         text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
         assert text.startswith("the answer")
-        assert REDIRECT in text and "python.org" in text
-        assert REDIRECT in transcript.path.read_text()
+        assert real in text and "python.org" in text
+        assert REDIRECT not in text
+        assert real in transcript.path.read_text()
+
+    async def test_web_off_adds_no_footer_and_makes_no_request(self, tmp_path: Path) -> None:
+        from datetime import datetime
+        from unittest.mock import AsyncMock
+
+        from gemini_bridge.client import GeminiClient
+        from gemini_bridge.server import build_server
+        from gemini_bridge.transcript import TranscriptWriter
+        from gemini_bridge.workspace import build_workspace
+        from tests.test_tools import _text_response
+
+        cfg = Config(auth={"method": "api_key"})
+        with patch("google.genai.Client"):
+            client = GeminiClient(cfg, api_key="k")
+        client._raw_client.aio.models.generate_content = AsyncMock(
+            return_value=_text_response("plain")
+        )
+        mcp = build_server(
+            client, TranscriptWriter(str(tmp_path / "t"), datetime.now()),
+            build_workspace(cfg, tmp_path),
+        )
+        with patch("httpx.AsyncClient") as http:
+            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": False})
+        blocks = result[0] if isinstance(result, tuple) else result
+        assert "".join(getattr(b, "text", "") for b in blocks) == "plain"  # type: ignore[union-attr]
+        http.assert_not_called()
+
+    def test_gemini_is_told_not_to_type_urls(self) -> None:
+        from gemini_bridge.tools.base import _WEB_PREAMBLE
+
+        assert "Do not write out URLs" in _WEB_PREAMBLE
+        assert "Cite the sources" not in _WEB_PREAMBLE
