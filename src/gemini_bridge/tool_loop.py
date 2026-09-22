@@ -47,6 +47,10 @@ MAX_MALFORMED_RETRIES = 2
 BUDGET_EXHAUSTED_PROMPT = "Tool budget exhausted — answer now with what you have."
 
 _ARG_PREVIEW_CHARS = 60
+# Web sources listed under an answer; the rest are counted (#80).
+MAX_SOURCES = 10
+
+Source = tuple[str, str]  # (title, uri)
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,8 @@ class ToolCallRecord:
     args: dict[str, Any]
     ok: bool
     summary: str
+    # Web pages this call drew on, as (title, uri); only server-side web calls carry any (#80).
+    sources: tuple[Source, ...] = ()
 
     def render(self) -> str:
         args = ", ".join(f"{k}={_preview(v)}" for k, v in self.args.items())
@@ -147,8 +153,9 @@ def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) 
     `url_context_metadata`. A pure fetch produces no grounding chunks, so it must be read from
     its own field or it goes unrecorded.
 
-    Sources are named by `title` (e.g. "python.org"); the `uri` is an opaque vertexaisearch
-    redirect that tells a transcript reader nothing.
+    Sources are named by `title` (e.g. "python.org") in the summary, where the opaque
+    vertexaisearch redirect `uri` would tell a reader nothing. The (title, uri) pairs ride on
+    the records as `sources`, once per turn rather than once per query, for sources_footer().
     """
     for url, status in _fetched_urls(candidate):
         ok = status is None or "SUCCESS" in str(status).upper()
@@ -158,27 +165,61 @@ def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) 
                 args={"url": url},
                 ok=ok,
                 summary="retrieved" if ok else f"not retrieved ({status})",
+                sources=((url, url),) if ok else (),
             )
         )
 
     meta = getattr(candidate, "grounding_metadata", None)
     if not meta:
         return
-    sources: list[str] = []
+    sources: list[Source] = []
     for chunk in meta.grounding_chunks or []:
         web = getattr(chunk, "web", None)
         if not web:
             continue
-        name = (
-            getattr(web, "title", None) or getattr(web, "domain", None) or getattr(web, "uri", None)
-        )
-        if name and name not in sources:
-            sources.append(name)
-    summary = f"{len(sources)} source(s)" + (f": {', '.join(sources[:5])}" if sources else "")
-    for query in meta.web_search_queries or []:
+        uri = getattr(web, "uri", None) or ""
+        name = getattr(web, "title", None) or getattr(web, "domain", None) or uri
+        if name and all(s != (name, uri) for s in sources):
+            sources.append((name, uri))
+    titles = list(dict.fromkeys(name for name, _ in sources))
+    summary = f"{len(titles)} source(s)" + (f": {', '.join(titles[:5])}" if titles else "")
+    queries = list(meta.web_search_queries or [])
+    if not queries and sources:
+        queries = ["(query not reported)"]
+    for i, query in enumerate(queries):
         records.append(
-            ToolCallRecord(name="google_search", args={"query": query}, ok=True, summary=summary)
+            ToolCallRecord(
+                name="google_search",
+                args={"query": query},
+                ok=True,
+                summary=summary,
+                sources=tuple(sources) if i == 0 else (),
+            )
         )
+
+
+def sources_footer(records: list[ToolCallRecord], limit: Optional[int] = MAX_SOURCES) -> str:
+    """The web sources behind an answer, for the reply and the transcript (#80).
+
+    Search links are the API's grounding redirects, passed through as-is: resolving them to
+    the real page would cost a request per source. Empty when the call used no web source.
+    `limit=None` lists every source, for the transcript.
+    """
+    seen: dict[str, str] = {}
+    for record in records:
+        for title, uri in record.sources:
+            seen.setdefault(uri or title, title)
+    if not seen:
+        return ""
+    lines = [
+        "[gemini-bridge] Web sources (search links are Google redirects that open the real page):"
+    ]
+    shown = list(seen.items()) if limit is None else list(seen.items())[:limit]
+    for i, (uri, title) in enumerate(shown, 1):
+        lines.append(f"{i}. {title} — {uri}" if uri != title else f"{i}. {uri}")
+    if len(seen) > len(shown):
+        lines.append(f"… and {len(seen) - len(shown)} more (see the transcript)")
+    return "\n".join(lines)
 
 
 def _fetched_urls(candidate: types.Candidate) -> list[tuple[str, Optional[str]]]:

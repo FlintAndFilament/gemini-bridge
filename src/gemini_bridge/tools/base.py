@@ -42,7 +42,7 @@ _log = logging.getLogger(__name__)
 from gemini_bridge.config import ThinkingLevel
 from gemini_bridge.file_tools import READ_TOOL_NAMES, WRITE_TOOL_NAME
 from gemini_bridge.sandbox import DEFAULT_DENY, Sandbox
-from gemini_bridge.tool_loop import ToolCallRecord
+from gemini_bridge.tool_loop import ToolCallRecord, sources_footer
 from gemini_bridge.transcript import TranscriptWriter
 from gemini_bridge.web_tools import WEB_TOOL_NAMES, Capabilities, resolve_capabilities
 from gemini_bridge.workspace import Workspace
@@ -402,10 +402,16 @@ async def call_gemini(
             return _log_failure(f"[gemini-bridge error] {exc}")
 
     _log.debug("%s session=%r OK", tool_name, session_name)
+    # Sources of the attempt that produced the answer, not of one abandoned for the fallback.
+    answer_records = records[fallback_at:] if fallback_at is not None else records
+    logged = response
+    if footer := sources_footer(answer_records):
+        response += "\n\n" + footer
+        logged += "\n\n" + sources_footer(answer_records, limit=None)
     transcript.append(
         tool_name=tool_name,
         prompt=prompt,
-        response=response,
+        response=logged,
         thinking=effective_thinking,
         session=session_name,
         tool_calls=_tool_lines(),
