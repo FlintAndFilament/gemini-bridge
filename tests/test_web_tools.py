@@ -487,8 +487,7 @@ def _grounded(queries: list[str], chunks: list[tuple[str, str]]) -> types.Candid
         grounding_metadata=types.GroundingMetadata(
             web_search_queries=queries,
             grounding_chunks=[
-                types.GroundingChunk(web=types.GroundingChunkWeb(uri=u, title=t))
-                for t, u in chunks
+                types.GroundingChunk(web=types.GroundingChunkWeb(uri=u, title=t)) for t, u in chunks
             ],
         ),
     )
@@ -616,7 +615,8 @@ class TestSourcesReachTheCaller:
             return_value=_text_response("plain")
         )
         mcp = build_server(
-            client, TranscriptWriter(str(tmp_path / "t"), datetime.now()),
+            client,
+            TranscriptWriter(str(tmp_path / "t"), datetime.now()),
             build_workspace(cfg, tmp_path),
         )
         with patch("httpx.AsyncClient") as http:

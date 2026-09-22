@@ -1,25 +1,35 @@
 # Tools Reference
 
-Six tools: five inference tools (`gemini_ask`, `gemini_brainstorm`, `gemini_review`,
-`gemini_debug`, `gemini_architect`) and one discovery utility (`gemini_list_models`).
+Seven tools: five generating tools (`gemini_ask`, `gemini_brainstorm`, `gemini_review`,
+`gemini_debug`, `gemini_architect`) that call Gemini, and two utilities that do not generate:
+[`gemini_list_models`](#gemini_list_models) and [`gemini_help`](#gemini_help).
 
-The five inference tools share four optional parameters:
-- `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; falls back to `default_thinking` in config
+The five generating tools share four optional parameters:
+- `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; omit to use `default_thinking`
+  in config. If a model rejects a level, the bridge steps up to the next one it accepts and
+  remembers that for the rest of the process.
 - `session_name: str` — which conversation to continue (default `"default"`). Calls sharing a
   name continue one Gemini conversation; a new name starts fresh. Sessions are separate per
   tool and per model, live in memory until the server restarts, and the least recently used is
   dropped past 50. **After a `web=true` call, use a new name before asking for writes** — see
-  [What persists between calls](#what-persists-between-calls).
+  [What persists between calls](#what-persists-between-calls). That advice appears in the
+  parameter's own description only on the three `write_file` tools, and only while file tools
+  are on.
 - `web: bool` — let Gemini search the web and fetch URLs for this call; omit to use
   `web_tools.enabled`. **While web access is on, `write_file` is withheld** — see
   [Web access](#web-access).
-- `model: str` — `flash` / `flash-lite` / `pro` for the newest release of a family, or any Gemini
-  model id; omit for the server default (the newest Flash, resolved at startup). The
-  parameter's description is **backend-aware** (it lists the models valid for your active
-  backend). Sessions are keyed by tool + `session_name` + `model`, so switching model starts a
+- `model: str` — `flash` / `flash-lite` / `pro` (or Google's `gemini-flash-latest`,
+  `gemini-flash-lite-latest`, `gemini-pro-latest`) for the newest release of a family, or any
+  Gemini model id; omit for the server default (config `default_model`, else the newest Flash
+  resolved at startup). The parameter's description is **backend-aware**: it names the concrete
+  id each alias resolved to, the recommended ids for your active backend, and the default.
+  Sessions are keyed by tool + `session_name` + resolved model, so switching model starts a
   fresh session. Call [`gemini_list_models`](#gemini_list_models) to discover valid values, and
   see [configuration.md](configuration.md#choosing-a-model) for the recommended set and fallback
   behavior.
+
+Every generating call appends an entry to the session transcript — see
+[transcripts.md](transcripts.md).
 
 ---
 
@@ -27,7 +37,8 @@ The five inference tools share four optional parameters:
 
 Gemini can inspect — and for some tools, write to — the repository Claude Code was launched in.
 Gemini never touches disk itself: it *requests* a tool call, and the bridge runs it locally
-inside a sandbox, then sends the result back. One MCP call can involve up to 20 such rounds.
+inside a sandbox, then sends the result back. One MCP call allows up to 20 rounds of such
+requests; after that Gemini is told to answer with what it has.
 
 | Tool | Read tools | `write_file` | Saves answer as artifact |
 |---|---|---|---|
@@ -41,11 +52,14 @@ inside a sandbox, then sends the result back. One MCP call can involve up to 20 
 
 | Tool | Does | Cap |
 |---|---|---|
-| `list_dir(path=".")` | Directory entries with type and size | 500 entries |
+| `list_dir(path=".")` | Directory entries: name, type, and size for files; denied entries are omitted | 500 entries |
 | `glob(pattern)` | Files matching a glob; `**/` spans directories, `*` stays in one | 500 results |
-| `grep(pattern, path=".", glob=None)` | Python-regex search; returns path, line number, text | 200 matches; 5,000 files / 20 MiB scanned |
-| `read_file(path, offset=0, limit=None)` | Text file contents, pageable by line | 256 KiB per call |
-| `write_file(path, content)` | Create or overwrite a text file (parents created) | `max_write_bytes` (256 KiB) |
+| `grep(pattern, path=".", glob=None)` | Python-regex search; returns path, line number, text. `glob` filters by file name (`*.py`) or, with a `/`, by path (`src/**`). Lines over 2,000 characters are skipped | 200 matches; 5,000 files / 20 MiB scanned; 10 s |
+| `read_file(path, offset=0, limit=None)` | Text file contents with `cat -n`-style line numbers, pageable by line (`offset` is 0-based, `limit` is a line count) | 256 KiB returned per call; files over 20 MiB and binary files refused |
+| `write_file(path, content)` | Create or overwrite a text file (parent directories created) | `max_write_bytes` (default 256 KiB) |
+
+A result that hits a cap is flagged `truncated=true`; a `grep` that runs out of time returns
+`timed_out=true` instead of hanging the call.
 
 **Sandbox rules:**
 - Every path is fully resolved (symlinks followed, `..` collapsed) and must stay inside the root —
@@ -54,12 +68,14 @@ inside a sandbox, then sends the result back. One MCP call can involve up to 20 
   `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `*credentials*.json`, `*-sa-key.json`, `.ssh/**`,
   `.aws/**`, `.gnupg/**`, `.netrc`, `.npmrc`, `.pypirc`) is checked case-insensitively, **at any
   depth** (so a nested `vendor/x/.git/` is covered), on both the requested and the resolved path.
+  Setting `file_tools.deny` in config replaces this list rather than extending it.
 - File tools switch themselves off when Claude Code is launched from your home directory, the
-  filesystem root, or any folder containing your home directory. The startup log says why.
-- `grep` stops after 10 seconds, so a pathological regex returns `timed_out` instead of hanging
-  the call.
-- Searches skip `.venv`, `venv`, `node_modules`, `__pycache__`, `dist`, `build`, and tool caches, and
-  never follow symlinked directories. Those folders are still readable by direct path.
+  filesystem root, or any folder containing your home directory, or when
+  `file_tools.enabled` is `false`. The startup log line says which.
+- `glob` and `grep` skip `.venv`, `venv`, `node_modules`, `__pycache__`, `dist`, `build`,
+  `.mypy_cache`, `.pytest_cache` and `.ruff_cache`, and never follow symlinked directories.
+  Those folders are still readable by direct path, so searches are **not exhaustive**: an empty
+  `grep` is not proof that a symbol is absent.
 - Writes are atomic, keep the file's existing permissions (e.g. an executable script stays
   executable), and replace a symlink at the target rather than writing through it. There is no
   delete, rename, chmod, or execute — nothing in the bridge spawns a process.
@@ -70,52 +86,54 @@ inside a sandbox, then sends the result back. One MCP call can involve up to 20 
 
 **How the calling client learns about this.** The capability is advertised to the MCP client,
 not just to Gemini, so a Claude session knows to name paths instead of pasting file contents and
-knows which calls may touch the working tree. All three channels are computed from the live
-workspace at registration, so they cannot drift from the capability actually wired up:
+knows which calls may touch the working tree. Every channel is computed from the live
+workspace at registration, so none can drift from the capability actually wired up:
 
-- **Server instructions** — a short overview sent on connect: each tool in one line, the
-  sandbox root and deny summary, which tools can `write_file`, when to use `web=true` and the
-  new-`session_name` rule, and the parameters that change behavior. Claude Code keeps only about
-  the first 2048 characters of a server's instructions and silently drops the rest (#78), so
-  this text is held under 2000 characters in every configuration, and a test enforces that.
-  When file tools are off, it states the reason instead.
+- **Server instructions** — a short overview sent on connect (`guide.py`): each tool in one
+  line, the sandbox root and deny summary, which tools can `write_file`, when to use `web=true`
+  and the new-`session_name` rule, and the parameters that change behavior. Claude Code keeps
+  only about the first 2048 characters of a server's instructions and silently drops the rest
+  (#78), so this text is held under 2000 characters in every configuration, and a test enforces
+  that. When file tools are off, it states the reason instead.
 - **`gemini_help`** — the detail that does not fit: the full deny-list, the directories
   `glob`/`grep` skip, the result caps and write cap, the web rules, sessions, and everything that
-  reaches disk on any call (the transcript path and which tools save artifacts). Call it with a
-  `topic` (see [gemini_help](#gemini_help)) or with none for everything.
-- **Tool descriptions** — each tool's description ends with its own repository-access sentence
-  and a "Writes to disk" clause naming the transcript entry, `write_file` where the tool has it,
-  and the artifact if it saves one.
+  reaches disk (the transcript path and which tools save artifacts). See
+  [gemini_help](#gemini_help).
+- **Tool descriptions** — each generating tool's description adds its repository-access
+  sentence, a "Writes to disk" clause naming the transcript entry, `write_file` where the tool
+  has it, and the artifact if it saves one, and ends with its web-access note.
 - **Tool annotations** — `destructiveHint` is set on exactly the three `write_file` tools, and
   only while file tools are enabled. Artifact saving does not set it: the store always creates a
   new file (`-2`, `-3` … on collision) and never overwrites. `readOnlyHint` is false on the five
   generating tools, because every one of them appends to the transcript, and true on
-  `gemini_list_models`, which writes nothing at all — a client that gates auto-approval on
-  annotations would otherwise prompt for the one harmless call and wave the rest through.
-  `openWorldHint` is true everywhere: every call reaches the Gemini API.
+  `gemini_list_models` and `gemini_help`, which write nothing — a client that gates
+  auto-approval on annotations would otherwise prompt for the harmless calls and wave the rest
+  through. `openWorldHint` is true on every tool that reaches the Gemini API (all but
+  `gemini_help`).
 
 Every advertised value is read from whatever enforces it, never restated: the capability rows
-from the `CAPABILITY` each tool module exports (built from its own `_WRITE` and `_ARTIFACTS`),
-the tool names from `READ_TOOL_NAMES` / `WRITE_TOOL_NAME` (derived from the declarations that
-build the registry), the deny-list from `Sandbox.deny`, the skipped directories from
-`WALK_SKIP_DIRS` minus whatever the deny-list already blocks, the result caps from the
-`*_MAX_*` constants `file_tools.py` enforces, and the write cap from `FileTools.max_write_bytes`.
-So changing a tool's capability row means changing `_WRITE` / `_ARTIFACTS` in its module and
-nothing else — both the tool's own description and the server-level rows follow.
-
-`gemini_help` (topic `files`) also states that searches are **not exhaustive** — `glob`/`grep` skip the
-directories above, never follow symlinked directories, and cap their results (flagged
-`truncated=true`), and `read_file` refuses binary files — so a caller does not read an empty
-`grep` as proof that a symbol is absent.
+from the `CAPABILITY` each tool module exports (built from its own `_WRITE`, `_ARTIFACTS` and
+`_DESCRIPTION`), the tool names from `READ_TOOL_NAMES` / `WRITE_TOOL_NAME` (derived from the
+declarations that build the registry), the deny-list from `Sandbox.deny`, the skipped
+directories from `WALK_SKIP_DIRS` minus whatever the deny-list already blocks, the result caps
+from the `*_MAX_*` constants `file_tools.py` enforces, and the write cap from
+`FileTools.max_write_bytes`. So changing a tool's capability row means changing `_WRITE` /
+`_ARTIFACTS` in its module and nothing else — the tool's description, the server instructions
+and `gemini_help` all follow.
 
 `tests/test_capability_metadata.py` runs each tool and compares the files that actually appear
 against what the text promised, so wording that over- or under-claims fails the suite.
 
-**Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`) as
-`YYYYMMDD-HHMM-<tool>-<topic-slug>.md`, with a header naming the tool, model, session, and time.
-The reply ends with `[gemini-bridge] artifact saved: <path>`. If saving fails you still get the
-answer, plus a `[gemini-bridge notice] artifact not saved: …` line. Artifacts are saved even when
-`file_tools.enabled` is `false`.
+**Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`, which must be inside the
+sandbox root and not denied, or the server refuses to start) as
+`YYYYMMDD-HHMM-<tool>-<topic-slug>.md` — for example
+`20260921-1432-gemini-review-is-there-a-race-condition-in.md`. The slug comes from `question`
+(else `content` / `description`) for review and architect, and from `topic` for brainstorm. The
+file starts with a header naming the tool, model, session, and time, followed by the answer
+(including any sources footer). The reply ends with `[gemini-bridge] artifact saved: <path>`,
+relative to the repo root. If saving fails you still get the answer, plus a
+`[gemini-bridge notice] artifact not saved: …` line. Artifacts are written by the bridge, not
+by Gemini, so they are saved even when file tools are off.
 
 ---
 
@@ -125,7 +143,7 @@ Gemini can search the web and fetch URLs during a call, using the Gemini API's *
 `google_search` and `url_context`. Unlike the file tools, the bridge does not execute these —
 the API runs them server-side and returns the result inside the same response. There is no
 sandbox to enforce and no handler to write; what the bridge decides is only whether to attach
-them.
+them. Both are attached together or not at all.
 
 **Turning it on.** `web_tools.enabled` in config sets the default (ships `false`). Every
 generating tool takes `web: bool | null`, where `null` uses the config default:
@@ -149,11 +167,12 @@ shell script inside the repo are all writable and all consequential.
 The cost is low, because the bridge writes artifacts itself: a web-enabled `gemini_review`
 still produces its artifact. What it loses is Gemini writing directly into the tree during that
 same call. When you want both, make two calls — one with `web=true` to research, one with
-`web=false` to write.
+`web=false` and a new `session_name` to write.
 
-One function, `resolve_capabilities()` in `web_tools.py`, implements this rule, and both the
-runtime and the advertised metadata call it, so a tool's description can never claim a
-capability the call does not have.
+One function, `resolve_capabilities()` in `web_tools.py`, implements this rule. `call_gemini()`
+calls it once per call, and the result decides both the tools handed to Gemini and what its
+system instruction says it can do. The advertised text (tool descriptions, instructions,
+`gemini_help`) states the same rule in words; it does not call the function.
 
 ### What is recorded
 
@@ -163,12 +182,16 @@ metadata is written into the transcript beside the file-tool calls:
 ```
 - → read_file(path='src/gemini_bridge/web_tools.py') → 3.6 KiB
 - → google_search(query='"url_context" google-genai sdk') → 2 source(s): google.com, google.dev
+- → url_context(url='https://peps.python.org/pep-0020/') → retrieved
 ```
 
 Searches and URL fetches are recorded separately, because the API reports them separately:
 searches arrive in `grounding_metadata`, fetches in `url_context_metadata`. A fetch that
 produces no grounding chunks is still logged with its URL, and a failed retrieval is logged as
-a failure — otherwise a URL could enter the context leaving no trace.
+a failure (`✗ url_context(…) → not retrieved (<status>)`) — otherwise a URL could enter the
+context leaving no trace. The `google_search` line names up to five sources by **title** (the
+site), because the raw URI is an opaque grounding redirect; the real URLs are in the sources
+footer below.
 
 **Sources in the reply (#80, #82).** A web-grounded answer ends with the pages it drew on, so the
 caller can check a claim instead of taking it on trust:
@@ -179,19 +202,20 @@ caller can check a claim instead of taking it on trust:
 2. https://docs.python.org/3/whatsnew/3.14.html
 ```
 
-The list comes from the API's grounding metadata, not from Gemini's text. Gemini is told not to
-write URLs itself, because when asked to cite it produces plausible but wrong ones.
+A search source shows `title — URL`; a fetched URL is listed on its own. The list comes from
+the API's grounding metadata, not from Gemini's text, and is deduplicated by final URL. Gemini
+is told not to write URLs itself and to name a source by its site or title instead, because when
+asked to cite it produces plausible but wrong ones. If the call fell back to another model, only
+the sources of the attempt that produced the answer are listed.
 
 Search results arrive as Google's grounding redirect links
 (`vertexaisearch.cloud.google.com/grounding-api-redirect/…`). The bridge resolves each one with a
-single `HEAD` request that is not followed: the `302`'s `Location` is the real page. This costs
-**zero Gemini tokens**, downloads no page, and runs for all sources in parallel with a 3-second
-timeout. A source that does not resolve keeps its redirect link, marked `(unresolved Google
-redirect)`. Only grounding redirect links are requested; fetched URLs are already real and are
-listed as they are. The reply shows up to 30 sources; the transcript logs all of them.
-
-Sources are recorded by **title** (the site), not by `uri` — the URI is an opaque
-`vertexaisearch` redirect that tells a transcript reader nothing.
+single `HEAD` request that is not followed: the redirect's `Location` is the real page. This
+costs **zero Gemini tokens**, downloads no page, and runs for all sources in parallel with a
+3-second timeout. A source that does not resolve keeps its redirect link, marked `(unresolved
+Google redirect)`, and never fails the call. Only grounding redirect links are requested;
+fetched URLs are already real and are listed as they are. The reply shows up to 30 sources,
+then `… and N more (see the transcript)`; the transcript lists all of them.
 
 ### What persists between calls
 
@@ -205,7 +229,8 @@ would together defeat it.
 **Residual risk:** Gemini's own answer does persist, and an injection that survived into that
 answer would persist with it. That answer was returned to you first, so it is visible rather
 than silent, but it is not a guarantee. The clean reset is a new `session_name` for the call that
-writes — the server instructions tell every Claude session to do exactly that.
+writes — the server instructions and the write tools' `session_name` description tell every
+Claude session to do exactly that.
 
 ### Limits and caveats
 
@@ -216,9 +241,11 @@ writes — the server instructions tell every Claude session to do exactly that.
   Developer API mode` when converting the request. `google_search` and `url_context` themselves
   convert fine, but the flag that lets them share a request with the bridge's file tools is
   Developer-API only, and the file tools are almost always on. On a Vertex backend the bridge
-  drops web access rather than failing the call, and the reply opens with
-  `[gemini-bridge notice] Web access was requested but is unavailable on the <method> backend`.
-  The tool descriptions and server instructions say so too.
+  drops web access rather than failing the call (the tool keeps `write_file`, since no web
+  content is in play), and the reply opens with `[gemini-bridge notice] Web access was requested
+  but is unavailable on the <method> backend, so this answer is not web-grounded.` That applies
+  when web access comes from `web_tools.enabled` too. The tool descriptions, server instructions
+  and `gemini_help` say web access is unavailable.
 - Other built-in tools the SDK exposes — `exa_ai_search`, `mcp_servers`, `code_execution`,
   `file_search` — are deliberately not enabled.
 
@@ -233,12 +260,13 @@ writes — the server instructions tell every Claude session to do exactly that.
 > directly and precisely. Prefer concrete examples. When uncertain, say so.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `prompt` | string | yes | The question or request |
-| `thinking` | string | no | Reasoning depth |
-| `session_name` | string | no | Session identifier (default: `"default"`) |
-| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
+| `prompt` | string | required | The question or request |
+| `thinking` | string | config `default_thinking` | Reasoning depth |
+| `session_name` | string | `"default"` | Conversation to continue |
+| `model` | string | server default (newest Flash) | `flash` / `flash-lite` / `pro` or a model id |
+| `web` | bool | config `web_tools.enabled` | Let Gemini search the web and fetch URLs |
 
 **When to use:**
 - Direct questions with clear answers
@@ -262,14 +290,15 @@ gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait
 > alternatives even when the current path seems fine. Be concise.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `topic` | string | yes | The topic or problem to brainstorm about |
-| `context` | string | no | What Claude is currently doing or has considered |
-| `thinking` | string | no | Reasoning depth |
-| `session_name` | string | no | Session identifier |
-| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
-| `write_artifact` | bool | no | Save the ideas to `artifacts_dir` (default `false`) |
+| `topic` | string | required | The topic or problem to brainstorm about |
+| `context` | string | `""` | What Claude is currently doing or has considered |
+| `thinking` | string | config `default_thinking` | Reasoning depth |
+| `session_name` | string | `"default"` | Conversation to continue |
+| `model` | string | server default (newest Flash) | `flash` / `flash-lite` / `pro` or a model id |
+| `web` | bool | config `web_tools.enabled` | Let Gemini search the web; withholds `write_file` for the call |
+| `write_artifact` | bool | `false` | Save the ideas to `artifacts_dir` |
 
 **When to use:**
 - Design decisions where you want a second take
@@ -296,14 +325,15 @@ gemini_brainstorm(
 > Prioritize by severity. If something is sound, say so briefly and move on.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `content` | string | yes | Code, design, or plan to review |
-| `question` | string | no | Specific question to focus the review |
-| `thinking` | string | no | Reasoning depth |
-| `session_name` | string | no | Session identifier |
-| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
-| `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
+| `content` | string | required | Code, design, or plan to review — or the paths Gemini should read |
+| `question` | string | `""` | Specific question to focus the review |
+| `thinking` | string | config `default_thinking` | Reasoning depth |
+| `session_name` | string | `"default"` | Conversation to continue |
+| `model` | string | server default (newest Flash) | `flash` / `flash-lite` / `pro` or a model id |
+| `web` | bool | config `web_tools.enabled` | Let Gemini search the web; withholds `write_file` for the call |
+| `write_artifact` | bool | `true` | Save the answer to `artifacts_dir` |
 
 **When to use:**
 - Code review before merging
@@ -313,7 +343,7 @@ gemini_brainstorm(
 **Example:**
 ```
 gemini_review(
-    content=f"```python\n{code}\n```",
+    content="Review src/gemini_bridge/client.py, the session cache in particular.",
     question="Is there a race condition in the session cleanup logic?"
 )
 ```
@@ -330,13 +360,14 @@ gemini_review(
 > specific diagnostic steps. Don't guess without basis — reason from what's shown.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `error` | string | yes | Error message, stack trace, or failure description |
-| `context` | string | no | Relevant code, recent changes, environment details |
-| `thinking` | string | no | Reasoning depth (use `high` for complex failures) |
-| `session_name` | string | no | Session identifier |
-| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
+| `error` | string | required | Error message, stack trace, or failure description |
+| `context` | string | `""` | Relevant code, recent changes, environment details |
+| `thinking` | string | config `default_thinking` | Reasoning depth (use `high` for complex failures) |
+| `session_name` | string | `"default"` | Conversation to continue |
+| `model` | string | server default (newest Flash) | `flash` / `flash-lite` / `pro` or a model id |
+| `web` | bool | config `web_tools.enabled` | Let Gemini search the web and fetch URLs |
 
 **When to use:**
 - Unexplained test failures
@@ -364,14 +395,15 @@ gemini_debug(
 > choice is genuinely context-dependent.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `description` | string | yes | System design or architecture to evaluate |
-| `question` | string | no | Specific architecture question or concern |
-| `thinking` | string | no | Reasoning depth (use `high` for complex systems) |
-| `session_name` | string | no | Session identifier |
-| `model` | string | no | `flash` / `flash-lite` / `pro` or a model id; omit for the server default (newest Flash) |
-| `write_artifact` | bool | no | Save the answer to `artifacts_dir` (default `true`) |
+| `description` | string | required | System design or architecture to evaluate |
+| `question` | string | `""` | Specific architecture question or concern |
+| `thinking` | string | config `default_thinking` | Reasoning depth (use `high` for complex systems) |
+| `session_name` | string | `"default"` | Conversation to continue |
+| `model` | string | server default (newest Flash) | `flash` / `flash-lite` / `pro` or a model id |
+| `web` | bool | config `web_tools.enabled` | Let Gemini search the web; withholds `write_file` for the call |
+| `write_artifact` | bool | `true` | Save the answer to `artifacts_dir` |
 
 **When to use:**
 - Choosing between architectural patterns
@@ -392,29 +424,34 @@ gemini_architect(
 
 **Purpose:** Discovery utility — lists the Gemini models available on the bridge's active
 backend, so Claude (or you) can pick a valid value for the `model=` parameter. This is a
-metadata call, not an inference: it has no `thinking` or `session_name` parameter and is not
-written to the transcript.
+metadata call, not an inference: it has no `thinking` or `session_name` parameter, writes
+nothing, and is not recorded in the transcript.
 
 **Parameters:**
-| Parameter | Type | Required | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
-| `refresh` | bool | no | Re-fetch the live list, bypassing the per-process cache (default `false`) |
+| `refresh` | bool | `false` | Re-fetch the live list, bypassing the per-process cache |
 
 **Behavior:**
 - Fetches the live catalog via the backend's `models.list`, then keeps only models the bridge
-  can actually run — an **allowlist**: recognized Gemini chat generations (`gemini-2*` /
-  `gemini-3*`, dotted or hyphenated) plus `-latest` aliases. Everything else is dropped:
+  can actually run — an **allowlist**: Gemini chat generations from `gemini-2` up (`gemini-2*`,
+  `gemini-3*`, and any later major version, dotted or hyphenated) plus `-latest` aliases.
+  Where the catalog reports supported actions, the model must also support `generateContent`.
+  Everything else is dropped:
   - media/specialized variants by name marker — `image`, `tts`, `audio`, `embedding`, `live`,
     `computer-use`, `robotics`, `omni` (several of these report `generateContent` too, so a
     name check is required — the action alone is not sufficient);
   - non-Gemini families the bridge can't run — Gemma, Lyria, Nano-Banana, Antigravity,
     Deep Research, etc.
   - **Previews are kept** (e.g. `gemini-3-pro-preview`) — they are valid, usable models.
-- Renders a compact table: model id, display name, and `(default)` / `(alias)` markers, headed
-  by the active backend name. The default is listed first.
+- Renders a compact table: model id, display name, and markers — `default`, `latest <family>`
+  for the id each alias resolved to at startup, and `alias` for `-latest` names — headed by the
+  active backend name. The default is listed first, then the rest alphabetically.
 - Caches the result for the process lifetime; `refresh=true` forces a re-fetch.
-- **Graceful degradation:** if the live catalog can't be fetched, returns the curated static
-  shortlist (from `models.py`) with a clear "live list unavailable" notice instead of failing.
+- **Graceful degradation:** if the live catalog can't be fetched (or has no chat models),
+  returns the curated static shortlist (from `models.py`) headed by a
+  `[gemini-bridge notice] Live model list unavailable (…)` line instead of failing. That
+  result is not cached, so the next call tries the live list again.
 
 > **Note:** the list is a *discovery aid*, not a hard whitelist — an explicitly-requested valid
 > model still runs even if it isn't listed (e.g. a specialized `gemini-2*`/`gemini-3*` variant).
@@ -441,7 +478,8 @@ Gemini chat models on Developer API (Google AI Studio) (17 available):
 Pass model='<id>' to any tool. Omit to use the default (gemini-3.8-flash).
 Or pass flash / flash-lite / pro to get the newest release of that family.
 ```
-On a Vertex backend the header names Vertex AI and the `-latest` aliases are absent.
+On a Vertex backend the header names Vertex AI and the `-latest` aliases are absent from the
+catalog (the bridge still accepts them as `model=` values and resolves them itself).
 
 **How it resolves:**
 
@@ -451,8 +489,8 @@ flowchart TD
     B -->|yes| C[return cached table]
     B -->|no| D["client.list_models → backend models.list"]
     D --> E{fetch ok?}
-    E -->|yes| F["allowlist: keep gemini-2*/gemini-3* + -latest<br/>drop media/specialized + non-Gemini families"]
-    F --> G[render table<br/>default first, mark default/alias]
+    E -->|yes| F["allowlist: keep gemini-2+ chat models + -latest<br/>drop media/specialized + non-Gemini families"]
+    F --> G[render table<br/>default first, mark default/latest/alias]
     G --> H[cache + return]
     E -->|no| I[return curated static shortlist<br/>+ 'live unavailable' notice<br/>not cached]
 ```
@@ -463,12 +501,22 @@ See [configuration.md](configuration.md#choosing-a-model) for the recommended mo
 
 ## gemini_help
 
-The full detail behind the short server instructions: the `--help` for Claude. It writes
-nothing and makes no Gemini call.
+The full detail behind the short server instructions (#78): the `--help` for Claude. It writes
+nothing, makes no Gemini call, and is not recorded in the transcript.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `topic` | string | all topics | `tools`, `files`, `web`, `sessions`, `disk`, or a generating tool's name (e.g. `gemini_review`) |
 
+| Topic | Contents |
+|---|---|
+| `tools` | Each tool's one-line purpose, for choosing between them |
+| `files` | Sandbox root, read tools, full deny-list, directories `glob`/`grep` skip, result caps, which tools may `write_file` and its size cap |
+| `web` | Web default, when to pass `web=true`, the untrusted-content rule, and the `write_file` exclusion with the new-`session_name` advice |
+| `sessions` | The `session_name` contract |
+| `disk` | Everything that reaches disk: the transcript path and which tools save artifacts where |
+| `gemini_<tool>` | That tool's full description, as its MCP description states it |
+
 Every topic is built from the live configuration, the same way the instructions are, so it
-always matches what the server actually does. An unknown topic returns the list of valid ones.
+always matches what the server actually does. Topic names are case-insensitive; an unknown
+topic returns the list of valid ones.

@@ -2,7 +2,17 @@
 
 **Config file location:** `~/.config/gemini-bridge/config.json`
 
-Created by `bash setup.sh`. Safe to edit by hand.
+Created by `bash setup.sh`. Safe to edit by hand. The server reads it once at startup, so restart
+the MCP server (or Claude Code) after an edit.
+
+`setup.sh` writes only `project`, `location`, `default_thinking`, `default_model` (when you give
+one), `transcript_dir` and `auth`. Every other field below is optional and takes its default until
+you add it by hand. **Re-running `setup.sh` rewrites the whole file from those fields**, so any
+`artifacts_dir`, `file_tools` or `web_tools` you added by hand is dropped; add them back after a
+re-run. A missing file, invalid JSON, or a value that fails validation stops the server
+at startup with `Config file not found`, `Config file is not valid JSON`, or
+`Config validation failed: …` in the log (see [logging.md](logging.md)). Unknown keys are ignored
+silently, so check spelling if a setting seems to have no effect.
 
 ## Full example
 
@@ -16,6 +26,9 @@ Created by `bash setup.sh`. Safe to edit by hand.
   "file_tools": {
     "enabled": true,
     "max_write_bytes": 262144
+  },
+  "web_tools": {
+    "enabled": false
   },
   "auth": {
     "method": "adc"
@@ -37,6 +50,7 @@ Created by `bash setup.sh`. Safe to edit by hand.
 **Required when:** `auth.method` is `adc`, `env`, or `keychain`
 **Omit when:** `auth.method = "api_key"` (Developer API does not use a GCP project)
 
+Config validation fails at startup if `project` is missing or empty with a Vertex auth method.
 Your GCP project ID. Must have the Vertex AI API enabled and `roles/aiplatform.user`
 granted to your ADC credentials or service account.
 
@@ -70,9 +84,11 @@ your chosen model is offered there; a model not served in your region returns a 
 Sets the default model for tool calls that omit the `model` parameter. Accepts an alias
 (`flash` / `flash-lite` / `pro`, or Google's `-latest` names) to track the newest release of a
 family, or a concrete id (e.g. `"gemini-3.5-flash"`) to pin one. Individual calls always override
-it via `model=`. Any other value the bridge can't run raises a
-`ClientError` at call time (there is no config-load validation yet — see #44). The backend-aware
-schema hint and `gemini_list_models` reflect the effective default. See
+it via `model=`. The value is not checked when the config loads: a name that isn't a Gemini
+model (anything not shaped `gemini-<version>-…`, a `-latest` alias, or a bridge alias) fails every
+call that uses it with a `[gemini-bridge error] Unrecognized model family` reply, and a well-formed
+id the backend doesn't serve fails with the API's 404. The backend-aware schema hint and
+`gemini_list_models` reflect the effective default. See
 [Choosing a model](#choosing-a-model).
 
 ---
@@ -81,7 +97,7 @@ schema hint and `gemini_list_models` reflect the effective default. See
 
 **Type:** string
 **Default:** `"medium"`
-**Valid values:** `none`, `low`, `medium`, `high`
+**Valid values:** `none`, `low`, `medium`, `high` (anything else fails validation at startup)
 
 Used when a tool call omits the `thinking` parameter. Claude overrides this per call when
 it judges a different level is appropriate.
@@ -110,13 +126,18 @@ collect transcripts globally instead.
 
 Where `gemini_architect` and `gemini_review` (and `gemini_brainstorm` with `write_artifact=true`)
 save their answers. Created on first save. It **must lie inside the project root and outside the
-deny-list** — the server refuses to start otherwise. Add it to `.gitignore` or commit it, per
-project.
+deny-list** — the server refuses to start otherwise (the log shows
+`startup failed — artifacts_dir …`). This check runs even when `file_tools.enabled` is `false`,
+because artifacts are written by the bridge, not by Gemini. `~` is not expanded here; use a
+relative path or an absolute path inside the project. Add the directory to `.gitignore` or commit
+it, per project.
 
 ---
 
+### `web_tools.enabled`
 
-### `web_tools`
+**Type:** boolean
+**Default:** `false`
 
 ```json
 "web_tools": { "enabled": false }
@@ -135,14 +156,23 @@ mutually exclusive (see [tools.md](tools.md#web-access)), so with `enabled: true
 passes `web=false`. Turning this on is therefore a change to your write workflow, not only to
 what Gemini can read.
 
+**Developer API only.** Web access works only with `auth.method = "api_key"`. On Vertex AI
+(`adc`, `env`, `keychain`) the setting and any `web=true` are accepted but dropped: the call runs
+without web access, keeps its normal file tools (including `write_file` where the tool has it),
+and the reply starts with a `[gemini-bridge notice]` saying the answer is not web-grounded. Tool
+descriptions on Vertex say web access is unavailable.
+
+---
+
 ### `file_tools.enabled`
 
 **Type:** boolean
 **Default:** `true`
 
 Master switch for Gemini's repository access (`list_dir`, `glob`, `grep`, `read_file`,
-`write_file`). `false` declares no tools to Gemini at all — calls behave exactly as before this
-feature. Artifacts are unaffected (they are written by the bridge, not by Gemini).
+`write_file`). `false` declares no file tools to Gemini at all, so you must paste any code you want
+considered into the call. Web access (`web_tools`) is separate and unaffected. Artifacts are
+unaffected too (they are written by the bridge, not by Gemini).
 
 File tools are also switched off automatically when Claude Code is launched from your home
 directory, the filesystem root, or any directory containing your home directory — a sandbox
@@ -160,15 +190,16 @@ case-insensitively **at any depth**: a pattern without `/` matches a file or dir
 anywhere; `dir/**` covers any directory named `dir` and everything in it (so `.git/**` also
 covers a nested `vendor/lib/.git/`).
 **Setting this replaces the defaults** — copy them into your list if you want to keep them.
+An empty list (`[]`) means no deny-list at all; the tool descriptions say so.
 
 ---
 
 ### `file_tools.max_write_bytes`
 
-**Type:** positive integer
+**Type:** positive integer (0 or negative fails validation)
 **Default:** `262144` (256 KiB)
 
-Largest content a single `write_file` call may write.
+Largest content a single `write_file` call may write. The tool descriptions quote this number.
 
 ---
 
@@ -210,10 +241,13 @@ The account name used in `security find-generic-password -a {account}`.
 
 The name of the environment variable holding your Google AI Studio API key. The key itself
 is never stored in `config.json` — only the variable name. At server startup, the server
-reads the key from this env var and raises an error if it is unset or empty.
+reads the key from this env var and exits with an error if it is unset or empty. If the value
+looks like a key rather than a name (starts with `AIza`, contains lowercase letters, or is longer
+than 40 characters), startup fails with a message telling you to put the variable name here.
 
 Common values: `"GEMINI_API_KEY"` (AI Studio default), `"GOOGLE_API_KEY"` (alternative).
-If both are set in your shell, `GOOGLE_API_KEY` takes precedence in the SDK.
+The bridge reads only the variable named here and passes that key to the SDK explicitly, so a
+second key variable in your environment is not used.
 
 ---
 
@@ -235,15 +269,16 @@ Every tool accepts an optional `model=` parameter.
   Specialized variants (`-customtools`, `-tts`, `-image`, dated builds) are never chosen. The
   result matches Google's own `-latest` aliases (verified live 2026-09-17). Restart the MCP
   server to pick up a new release; the choice never changes mid-session.
-- **Fallback:** on a terminal overload (503/429) after retries, the call is retried once on the
-  newest Flash-Lite and the response is prefixed with a visible `[gemini-bridge notice]`. If
+- **Fallback:** each request is retried up to 3 times with backoff on 503/429. If it still fails,
+  the call is retried once on the newest Flash-Lite (unless that is the model that just failed)
+  and the response is prefixed with a visible `[gemini-bridge notice]`. If
   Gemini already wrote a file during that call, it is not retried (writes are never replayed).
 - **Offline:** if the model list can't be read at startup, the pinned defaults are used —
   `gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`, Pro `gemini-3.1-pro-preview` — and a
   warning is logged.
 - **Visibility:** the startup log line names `default_model` and `fallback_model` as concrete ids
-  plus the resolved `flash=… flash-lite=… pro=…`; transcripts and artifacts record the concrete
-  model. `gemini_list_models` marks `(default)` and `(latest <family>)`.
+  plus the resolved `flash=… flash-lite=… pro=…`; artifacts record the concrete model
+  (transcripts don't record it). `gemini_list_models` marks `(default)` and `(latest <family>)`.
 
 ### Thinking levels per model
 

@@ -6,46 +6,118 @@
 graph TD
     M["__main__.py"] --> CFG["load_config()<br/>config.py"]
     M --> AUTH["build_auth()<br/>auth.py"]
-    M --> CL["GeminiClient(config, creds)<br/>client.py"]
-    M --> TR["TranscriptWriter(dir, time)<br/>transcript.py"]
-    M --> SRV["build_server(client, transcript)<br/>server.py"]
+    M --> CL["GeminiClient(config, credentials, api_key)<br/>client.py"]
+    M --> TR["TranscriptWriter(dir, startup time)<br/>transcript.py"]
+    M --> WS["build_workspace(config, cwd)<br/>workspace.py"]
+    M --> SRV["build_server(client, transcript, workspace)<br/>server.py"]
 
     CFG --> JSON["~/.config/gemini-bridge/config.json"]
     AUTH --> CRED["google.auth Credentials<br/>or API key"]
 
-    SRV --> MCP["FastMCP + 6 registered tools"]
+    WS --> SB["Sandbox<br/>sandbox.py"]
+    WS --> FT["FileTools + ToolRegistry<br/>file_tools.py"]
+    WS --> AR["ArtifactStore<br/>artifacts.py"]
+
+    SRV --> GUIDE["guide.py<br/>server_instructions() / help_text()"]
+    SRV --> MCP["FastMCP + 7 registered tools"]
     MCP --> T1["gemini_ask"]
     MCP --> T2["gemini_brainstorm"]
     MCP --> T3["gemini_review"]
     MCP --> T4["gemini_debug"]
     MCP --> T5["gemini_architect"]
     MCP --> T6["gemini_list_models"]
+    MCP --> T7["gemini_help"]
 
-    T1 & T2 & T3 & T4 & T5 --> BASE["tools/base.py<br/>call_gemini() + model_param_hint()"]
+    T1 & T2 & T3 & T4 & T5 --> BASE["tools/base.py<br/>call_gemini()"]
     BASE --> CL
+    BASE --> WEB["web_tools.py<br/>resolve_capabilities()"]
+    BASE --> SRC["sources.py<br/>resolve_redirects() + sources_footer()"]
+    BASE --> TR
+    BASE --> WS
+    CL --> LOOP["tool_loop.py<br/>run_tool_loop()"]
+    CL --> WEB
     T6 --> CL
-    BASE & T6 --> MOD["models.py<br/>shortlist / schema_hint / is_chat_capable"]
+    T6 & BASE --> MOD["models.py<br/>shortlist / schema_hint / is_chat_capable"]
+    T7 --> GUIDE
 ```
 
-The inference tools route through `tools/base.py`; `gemini_list_models` calls the client
-directly. Both consult `models.py` — the single source of truth for the model taxonomy
-(backend shortlists, the backend-aware schema hint, and the chat-capable filter).
+The five generating tools route through `call_gemini()` in `tools/base.py`.
+`gemini_list_models` calls the client directly and never writes a transcript.
+`gemini_help` never calls the backend: `server.py` hands it a callable that renders text
+from `guide.py`.
 
-## Data Flow (per inference tool call)
+## Module Map
 
-1. Claude Code sends an MCP tool call (e.g. `gemini_brainstorm`) with an optional `model=`
-2. `server.py` routes to the registered tool function in `tools/brainstorm.py`
-3. Tool calls `call_gemini()` from `tools/base.py` with the session name, system prompt, and prompt
-4. `call_gemini()` asks `client.resolve_model()` for the concrete model — the per-call `model`,
-   else `default_model`, else the newest Flash; aliases (`flash` / `flash-lite` / `pro`,
-   `*-latest`) map to the newest release resolved at startup — and calls
-   `client.get_or_create_session()`, one session per `tool:session_name:concrete-model`
-5. `client.ask()` builds a `GenerateContentConfig` with the thinking parameter for that model's
-   generation (adapting if the model rejects a level) and sends to the active backend
-6. On a terminal 503/429, `call_gemini()` retries once on the newest Flash-Lite
-   (`client.fallback_model`) and prepends a disclosure notice to the response
-7. `transcript.append()` writes the exchange to the Markdown file
-8. Tool returns the response string as the MCP tool result to Claude Code
+Package root: `src/gemini_bridge/`.
+
+| Module | Responsibility | Depends on (in-package) |
+|---|---|---|
+| `__init__.py` | Package identity only | none |
+| `__main__.py` | Startup: logging (daily file + stderr), config, auth, client, `refresh_latest()`, transcript, workspace, server; exits 1 on a config, auth or `artifacts_dir` error | config, auth, client, transcript, workspace, sandbox, server |
+| `config.py` | Pydantic models `Config`, `AuthConfig`, `FileToolsConfig`, `WebToolsConfig`; loads and validates `config.json`; raises `ConfigError` | sandbox (`DEFAULT_DENY`) |
+| `auth.py` | Credentials for `adc`, `env`, `keychain` and `api_key`; `build_auth()` returns `AuthResult(credentials, api_key)`; raises `AuthError` | config |
+| `errors.py` | `ClientError`, in its own module so `client.py` and `tool_loop.py` can both raise it | none |
+| `models.py` | Model taxonomy: per-backend shortlist, backend detection, schema hint, chat-capable filter, newest-per-family resolution, alias mapping. Pure, no I/O | none |
+| `client.py` | `GeminiClient`: builds the google-genai client, LRU session cache (50), model resolution, thinking translation that learns per-model rejections, 503/429 retry with backoff, `build_config()`, `ask()` | config, errors, models, tool_loop, web_tools |
+| `tool_loop.py` | `ToolRegistry`, `ToolCallRecord`, `run_tool_loop()` (up to 20 rounds, then a forced answer), `record_grounding()` for server-side web activity | errors |
+| `sandbox.py` | Path confinement: resolves every model-supplied path inside the root, applies the deny-list at any depth, walks without leaving the root | none |
+| `file_tools.py` | `list_dir`, `glob`, `grep`, `read_file`, `write_file` on top of `Sandbox`, with result and size caps; publishes them to a `ToolRegistry` (read-only or read+write) | sandbox, tool_loop |
+| `artifacts.py` | `ArtifactStore`: saves a final answer as `<YYYYMMDD-HHMM>-<tool>-<slug>.md`, never overwriting | none |
+| `workspace.py` | `Workspace`: Sandbox rooted at the launch directory, `FileTools`, per-call registry, `ArtifactStore`. Disables file tools when the root is home, `/`, or an ancestor of home | config, sandbox, file_tools, tool_loop, artifacts |
+| `web_tools.py` | `resolve_capabilities()`: decides web and write for a call, never both (#76). `web_tool_set()`: the `google_search` + `url_context` built-ins | none |
+| `sources.py` | Resolves Google grounding redirect links to real URLs with one HEAD request each (no redirect follow, 3 s timeout, in parallel); renders the sources footer (#80, #82) | tool_loop (`ToolCallRecord`) |
+| `transcript.py` | `TranscriptWriter`: appends each exchange as Markdown; write errors are logged, never raised | none |
+| `guide.py` | Text only: the short server instructions (kept under `INSTRUCTIONS_BUDGET` = 2000 characters) and the `gemini_help` topics, all derived from the live capability rows, deny-list, caps and web support (#74, #78) | tools, tools/base, file_tools, sandbox, web_tools, workspace, transcript |
+| `server.py` | Builds `FastMCP` with the guide's instructions and registers all 7 tools | client, guide, tools, transcript, workspace |
+
+Tools package: `src/gemini_bridge/tools/`.
+
+| Module | Responsibility | Depends on (in-package) |
+|---|---|---|
+| `tools/__init__.py` | Re-exports every `register_*` and collects the five `CAPABILITY` rows into `CAPABILITIES` | every tool module, tools/base |
+| `tools/base.py` | `ToolCapability`, `capability_hint()`, `tool_annotations()`, `session_param_hint()`, `model_param_hint()`, and `call_gemini()` | client, config, file_tools, sandbox, sources, tool_loop, transcript, web_tools, workspace, models |
+| `tools/ask.py` | `gemini_ask`: general question. Read-only, no artifacts | tools/base, client, config, transcript, workspace |
+| `tools/brainstorm.py` | `gemini_brainstorm`: divergent ideas. Read+write, artifacts opt-in | same as ask |
+| `tools/review.py` | `gemini_review`: critical review. Read+write, artifacts on by default | same as ask |
+| `tools/debug.py` | `gemini_debug`: root-cause hypotheses. Read-only, no artifacts | same as ask |
+| `tools/architect.py` | `gemini_architect`: design and tradeoffs. Read+write, artifacts on by default | same as ask |
+| `tools/list_models.py` | `gemini_list_models`: live, chat-capable catalog for the active backend; falls back to the static shortlist | client, models, tools/base, transcript (signature only) |
+| `tools/help.py` | `gemini_help`: returns one help topic or all of them from an injected render callable, so it never imports `guide.py` (#78) | none |
+
+## Data Flow (per generating tool call)
+
+1. Claude Code sends an MCP tool call (e.g. `gemini_review`) with optional `thinking`,
+   `session_name`, `model`, `web`, and, on tools that save artifacts, `write_artifact`.
+2. The tool function in `tools/review.py` builds the prompt and calls `call_gemini()`.
+3. `call_gemini()` runs `resolve_capabilities()`: `web` is the call's argument, or
+   `web_tools.enabled` when omitted; if web is on, `write_file` is withheld for this call.
+   On Vertex, web is dropped (the request flag it needs is Developer-API only), write is
+   restored, and a notice is added to the reply.
+4. It takes a file-tool registry from the workspace (read-only or read+write; none if the
+   file tools are switched off) and appends the matching preambles to the system prompt.
+5. `client.get_or_create_session()` returns the session keyed `tool:session_name:model`.
+   `client.resolve_model()` picks the model: per-call `model`, else config `default_model`,
+   else the newest Flash. Aliases (`flash`, `flash-lite`, `pro`, `*-latest`) map to the
+   newest release found at startup.
+6. `client.ask()` calls `run_tool_loop()`. Each round, `build_config()` sets the thinking
+   parameter for the model's generation, the file-tool declarations, and, with web on, the
+   `google_search` + `url_context` built-ins. `generate()` retries 503/429 with backoff.
+   A thinking-level rejection is learned and the request rebuilt.
+7. In the loop, `record_grounding()` records server-side searches, URL fetches and their
+   sources. Gemini's file-tool calls are dispatched locally through the sandbox and recorded.
+   The loop ends when Gemini answers in text.
+8. On success only, the prompt and final answer are committed to the session history.
+9. If the call failed with a terminal 503/429 and the model was not already the fallback,
+   `call_gemini()` retries once on the newest Flash-Lite and prefixes a disclosure notice.
+   It does not retry if `write_file` already succeeded in this call.
+10. `resolve_redirects()` turns grounding redirect links into real URLs (HEAD only, no Gemini
+    tokens), and `sources_footer()` appends up to 30 sources to the reply. The transcript
+    gets the full list.
+11. `transcript.append()` writes the exchange, including every recorded tool call.
+12. If the tool asked for an artifact, `ArtifactStore.save()` writes it and the reply gets
+    the artifact path. A failed save adds a notice; the answer is still returned.
+13. The reply goes back to Claude Code as the tool result. Errors come back as
+    `[gemini-bridge error] ...` strings, never as exceptions.
 
 ```mermaid
 sequenceDiagram
@@ -53,51 +125,76 @@ sequenceDiagram
     participant T as Tool module
     participant B as base.call_gemini()
     participant C as client.py<br/>GeminiClient
+    participant L as tool_loop.run_tool_loop()
     participant G as Gemini backend
+    participant S as sources.py
+    participant W as transcript + artifacts
 
-    CC->>T: tool call (prompt, thinking?, model?)
-    T->>B: call_gemini(..., model)
-    B->>C: get_or_create_session(tool:name:model)
-    B->>C: ask(prompt, thinking, model)
-    C->>G: send_message (with GenerateContentConfig)
-    alt 503/429 after retries and model != fallback model
-        G-->>C: terminal error
-        B->>C: ask(prompt, thinking, fallback model)
-        C->>G: retry on the newest Flash-Lite
-        G-->>C: response
-        B-->>T: notice + response
-    else success
-        G-->>C: response
-        B-->>T: response
+    CC->>T: tool call (prompt, thinking?, session_name?, model?, web?)
+    T->>B: call_gemini(...)
+    B->>B: resolve_capabilities(write, web)
+    B->>C: get_or_create_session(tool:name, model)
+    B->>C: ask(session, prompt, registry, web)
+    C->>L: run_tool_loop(generate, history, registry)
+    loop until a text answer (max 20 rounds)
+        L->>G: generate_content (GenerateContentConfig)
+        G-->>L: candidate
+        L->>L: record_grounding(candidate)
+        opt function calls
+            L->>L: registry.dispatch() via Sandbox
+        end
     end
-    B->>B: transcript.append()
-    T-->>CC: response text
+    L-->>C: answer
+    alt terminal 503/429 and no write_file yet
+        C-->>B: ClientError
+        B->>C: ask(..., fallback model)
+        C-->>B: answer (notice prefixed later)
+    else success
+        C-->>B: answer
+    end
+    B->>S: resolve_redirects(record_uris)
+    S-->>B: real URLs
+    B->>B: append sources_footer()
+    B->>W: transcript.append()
+    opt artifact requested
+        B->>W: artifacts.save()
+    end
+    B-->>T: reply text
+    T-->>CC: reply text
 ```
 
 ## Session Lifecycle
 
-- **Created:** on first call to any tool, keyed by `tool_name:session_name`
-- **Persists:** for the lifetime of the MCP server process (one Claude Code session)
-- **Accumulates context:** Gemini's `Chat` object retains message history automatically
-- **Destroyed:** when Claude Code restarts (new server process, new sessions)
+- **Created:** on the first call for a key, with no API call. The key is
+  `tool_name:session_name:concrete-model`, so changing the model starts a new session.
+- **History:** owned by the bridge (`Session.history`), not by an SDK chat object. Only
+  `[prompt, final answer]` is committed, and only when the call succeeds. Tool calls made
+  during a call are not replayed into later turns.
+- **Capped:** at most 50 sessions; the least recently used one is evicted.
+- **Persists:** for the lifetime of the MCP server process (one Claude Code session).
+- **Destroyed:** when Claude Code restarts (new server process, new sessions).
 
-Each tool uses its own session key (`gemini_ask:default`, `gemini_brainstorm:default`, etc.)
-so the system prompt persona is locked for the session.
+Each tool has its own sessions (`gemini_ask:default`, `gemini_review:default`, ...), so a
+tool's system prompt persona stays fixed within its sessions.
 
 ## Transcript Lifecycle
 
-- **File created:** at server startup, named with the startup timestamp
+- **File created:** on the first append, named with the server startup timestamp
 - **File path:** `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`
-- **Appended:** after every successful Gemini response
-- **Never truncated:** append-only; write errors go to stderr, never break tool calls
-- **Per session:** one file per Claude Code process lifetime
+  (`transcript_dir` defaults to `./session-summaries`)
+- **Appended:** after every successful generating call, and after a failed one that had
+  already made tool calls
+- **Contents:** tool, thinking level, session, prompt, each tool call (file tools,
+  searches, URL fetches), the response, and the full sources list
+- **Never truncated:** append-only; write errors are logged, never break tool calls
+- **Per session:** one file per server process lifetime
 
 ## SOLID Notes
 
 | Principle | How it's enforced |
 |---|---|
-| SRP | Each module owns exactly one concern |
-| OCP | New tools: add file + one line in server.py. New auth: add loader + one branch |
-| LSP | All auth paths return `Credentials`; all tools return `ToolResult` |
-| ISP | Tools receive only `GeminiClient` — not server or config objects |
-| DIP | `client.py` depends on `Credentials` abstraction; `server.py` depends on callables |
+| SRP | Each module owns one concern (see the module map) |
+| OCP | New tool: add a module, export it from `tools/__init__.py`, one register call in `server.py`. New auth: add a loader + one entry in `_LOADERS`. New tool source for Gemini: add (declaration, handler) pairs to a `ToolRegistry` |
+| LSP | All auth paths return an `AuthResult`; all tools return `ToolResult` |
+| ISP | Tools receive `GeminiClient`, `TranscriptWriter` and `Workspace`, never config or credentials |
+| DIP | `client.py` depends on the `Credentials` abstraction; `tools/help.py` takes a render callable instead of importing `guide.py` |

@@ -1,19 +1,19 @@
 <h1 align="center">gemini-bridge</h1>
-<h4 align="center">Gemini as a live sounding board for Claude Code — Vertex AI, persistent sessions, structured logging.</h4>
+<h4 align="center">Gemini as a live second opinion for Claude Code — reads your repo, searches the web with real sources, keeps sessions and transcripts.</h4>
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11+-blue.svg">
-  <img alt="MCP" src="https://img.shields.io/badge/MCP-1.28-green.svg">
-  <img alt="Vertex AI" src="https://img.shields.io/badge/Vertex%20AI-Gemini-orange.svg">
-  <img alt="Auth" src="https://img.shields.io/badge/auth-ADC%20%7C%20env%20%7C%20Keychain%20%7C%20API%20key-purple.svg">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-105%20passing-brightgreen.svg">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-1.28+-green.svg">
+  <img alt="Backends" src="https://img.shields.io/badge/backend-Developer%20API%20%7C%20Vertex%20AI-orange.svg">
+  <img alt="Auth" src="https://img.shields.io/badge/auth-API%20key%20%7C%20ADC%20%7C%20env%20%7C%20Keychain-purple.svg">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-611%20passing-brightgreen.svg">
 </p>
 
 gemini-bridge is an MCP server that gives Claude Code a live Gemini counterpart. When Claude is working on a hard problem — an architectural decision, a tricky bug, a code review — it can consult Gemini as a second opinion without switching tools or context.
 
-Sessions persist across all tool calls within a Claude Code session. Gemini accumulates context naturally across tools and turns. Every exchange is appended to a dated Markdown transcript file. The server logs to a daily rotating file so you can watch it live.
+Gemini isn't limited to what Claude pastes into the call. It reads the repository itself, inside a sandbox. It can search the web, and each web answer comes back with the sources it actually used. Conversations persist across calls, every exchange lands in a Markdown transcript, and the server logs to a daily file you can tail.
 
-Five focused tools, each with a distinct system prompt persona. Not a 37-tool Swiss Army knife.
+Five focused tools, each with its own persona, plus two utilities. Not a 37-tool Swiss Army knife.
 
 **Quick navigation:** [What it does](#what-it-does) | [How it works](#how-it-works) | [Prerequisites](#prerequisites) | [Quick start](#quick-start) | [Configuration](#configuration) | [Choosing a model](#choosing-a-model) | [Auth methods](#auth-methods) | [Thinking levels](#thinking-levels) | [Roadmap](#roadmap) | [Full documentation](#full-documentation)
 
@@ -21,31 +21,39 @@ Five focused tools, each with a distinct system prompt persona. Not a 37-tool Sw
 
 ## What it does
 
-| Tool | Persona | Required parameters |
-|---|---|---|
-| `gemini_ask` | Direct, precise — general purpose | `prompt` |
-| `gemini_brainstorm` | Devil's advocate, unconventional | `topic` |
-| `gemini_review` | Critical, severity-first | `content` |
-| `gemini_debug` | Evidence-based, hypothesis-driven | `error` |
-| `gemini_architect` | Opinionated, explicit tradeoffs | `description` |
+| Tool | Persona | Required parameter | Can write files? |
+|---|---|---|---|
+| `gemini_ask` | Direct, precise — general purpose | `prompt` | no |
+| `gemini_brainstorm` | Devil's advocate, unconventional | `topic` | yes |
+| `gemini_review` | Critical, severity-first | `content` | yes |
+| `gemini_debug` | Evidence-based, hypothesis-driven | `error` | no |
+| `gemini_architect` | Opinionated, explicit tradeoffs | `description` | yes |
+| `gemini_list_models` | Lists the chat models on your backend, for `model=` | — | no |
+| `gemini_help` | Claude's `--help`: full detail by topic | — | no |
 
-All five inference tools share optional `thinking` (`none`/`low`/`medium`/`high`), `session_name`, and `model` parameters. Claude picks thinking level based on question complexity, and may pick a `model` per call (omit for the server default).
+**Parameters on the five generating tools** (all optional):
 
-A sixth utility tool, **`gemini_list_models`**, returns the chat-capable models available on your active backend — use it to discover valid `model=` values. See [Choosing a model](#choosing-a-model).
+| Parameter | What it does |
+|---|---|
+| `session_name` | Same name continues a Gemini conversation; a new name starts fresh. Sessions are separate per tool and per model, and live until the server restarts |
+| `thinking` | `none` · `low` · `medium` · `high`. Omit it to use `default_thinking` |
+| `model` | A concrete id, or `flash` / `flash-lite` / `pro` for the newest of that family. See [Choosing a model](#choosing-a-model) |
+| `web` | `true` lets Gemini search the web and fetch URLs for this call. Omit it to use `web_tools.enabled` (off by default) |
+| `write_artifact` | Save the answer as a Markdown file. On by default for `review` and `architect`, off for `brainstorm` |
 
-A seventh, **`gemini_help`**, is Claude's `--help`: the full detail on file access, web rules, sessions and what reaches disk, by topic. The server instructions stay short because Claude Code keeps only about the first 2048 characters of them.
+**Repository access.** Gemini reads the repo Claude Code was launched in with `list_dir`, `glob`, `grep` and `read_file`. The three write-capable tools also get `write_file`, which can create or overwrite files but never delete, rename or execute anything. Everything stays inside the launch directory: `..`, absolute paths outside it and symlink escapes are rejected, and `.git`, `.env*`, keys and credential files are denied. Every file operation is logged in the transcript. Turn it all off with `"file_tools": {"enabled": false}`. See [docs/tools.md](docs/tools.md#repository-access).
 
-**Web access:** Gemini can search the web and fetch URLs using the Gemini API's built-in `google_search` and `url_context` — pass `web=true` on any tool, or set `"web_tools": {"enabled": true}`. Off by default (grounding bills per request). **While web access is on, `write_file` is withheld**: retrieved pages are attacker-controlled text, and a call that can both read the web and write your repo is a prompt-injection path. Searches and their sources are recorded in the transcript. See [docs/tools.md](docs/tools.md#web-access).
+**Web access.** With `web=true`, Gemini uses the Gemini API's built-in `google_search` and `url_context`. It's off by default because grounding is billed per request, and it works only on the Developer API (API key); on Vertex the bridge drops it with a notice. Two safeguards come with it:
+- **Web and `write_file` are mutually exclusive.** A call with web on has no `write_file`, because retrieved pages are attacker-controlled text. Retrieved page text is also stripped from session history, so it can't ride into a later call that can write.
+- **Sources come from the API, not from Gemini.** Every web answer ends with the sources recorded in Google's grounding metadata. Each one is resolved from Google's redirect link to the real page URL with a single `HEAD` request, which costs zero Gemini tokens. Gemini is told not to type URLs of its own, because when it does they're plausible and wrong.
 
-**Repository access:** Gemini can read the repo Claude Code was launched in — `list_dir`, `glob`, `grep`, `read_file` for all five inference tools, plus `write_file` for `brainstorm`, `architect`, and `review`. Everything is confined to the launch directory: `..`, outside absolute paths, and symlink escapes are rejected, and `.git`, `.env*`, keys, and credential files are denied. Nothing is ever executed. Every file operation is logged in the transcript. Turn it all off with `"file_tools": {"enabled": false}`. The server advertises all of this to the calling MCP client — a short overview in the server instructions, full detail from `gemini_help`, per-tool descriptions, and `destructiveHint` on the write-capable tools — so Claude knows to name paths rather than paste files, and knows which calls can touch the working tree. See [docs/tools.md](docs/tools.md#repository-access).
+See [docs/tools.md](docs/tools.md#web-access).
 
-**Artifacts:** `gemini_architect` and `gemini_review` save each answer to `gemini-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` (pass `write_artifact=false` to skip). `gemini_brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
+**What Claude is told.** Claude Code keeps only about the first 2048 characters of a server's instructions, so the bridge sends a short overview: the tools, what they can read and write, the web rules, and the parameters. The rest is one `gemini_help(topic=...)` call away, with topics `tools`, `files`, `web`, `sessions`, `disk` or a tool name. Every tool's description and MCP annotations (`destructiveHint` on the write-capable tools) are built from the live configuration, so what Claude is told always matches what the server does.
 
-**Session model:** One Gemini chat session per tool name per Claude Code process. Context accumulates naturally within a session — later calls can reference earlier ones. Changing `model` starts a separate session (sessions are keyed by tool + name + model).
+**Artifacts.** `gemini_review` and `gemini_architect` save each answer to `gemini-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` unless called with `write_artifact=false`. `gemini_brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
 
-**Transcript logging:** Every exchange appended to `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`.
-
-**Server logging:** Structured logs at `~/.config/gemini-bridge/logs/YYYYMMDD-gemini-bridge.log`. See [docs/logging.md](docs/logging.md).
+**Transcripts and logs.** Every exchange, including each file operation, web search and source, is appended to `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`; see [docs/transcripts.md](docs/transcripts.md). Server logs go to `~/.config/gemini-bridge/logs/YYYYMMDD-gemini-bridge.log`; see [docs/logging.md](docs/logging.md).
 
 ---
 
@@ -56,20 +64,27 @@ sequenceDiagram
     participant CC as Claude Code
     participant S as gemini-bridge (MCP server)
     participant G as Gemini API<br/>(Developer API or Vertex AI)
+    participant R as Google redirect
 
-    CC->>S: gemini_ask(prompt, thinking?, model?)
-    Note over S: model = requested model or alias → newest release<br/>or default_model or newest Flash
-    S->>G: send to chosen model
-    alt model overloaded (503/429)
-        G-->>S: terminal error
-        S->>G: retry once on the newest Flash-Lite
-        G-->>S: response
-        Note over S: prepend "[gemini-bridge notice]" disclosure
-    else success
-        G-->>S: response
+    CC->>S: gemini_review(content, model?, thinking?, web?, session_name?)
+    Note over S: resolve model (alias → newest release)<br/>pick tools: repo reads, + write_file unless web=true,<br/>+ google_search / url_context if web=true
+    loop until Gemini answers (tool budget capped)
+        S->>G: session history + prompt + tool declarations
+        G-->>S: function call (read_file, grep, write_file…)
+        S->>S: run it inside the sandbox, record it
     end
-    S->>S: append exchange to transcript
-    S-->>CC: response text
+    G-->>S: answer + grounding metadata
+    opt model overloaded (503/429)
+        S->>G: retry once on the newest Flash-Lite
+        Note over S: prepend "[gemini-bridge notice]"
+    end
+    opt web sources recorded
+        S->>R: HEAD each redirect (not followed)
+        R-->>S: 302 Location → real page URL
+        Note over S: append sources footer
+    end
+    S->>S: append to transcript, save artifact
+    S-->>CC: answer (+ sources, + artifact path)
 ```
 
 ---
@@ -88,7 +103,7 @@ sequenceDiagram
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/PCS-LAB-ORG/gemini-bridge.git
+git clone https://github.com/FlintAndFilament/gemini-bridge.git
 cd gemini-bridge
 python3 -m pip install -e .
 
@@ -115,8 +130,11 @@ Restart Claude Code after step 3. On next start you'll see startup entries in th
 
 ```
 [gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
-[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: transcript → ~/session-summaries/20260702-1750-gemini-bridge-transcript.md
+[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: transcript → ~/dev/my-project/session-summaries/20260702-1750-gemini-bridge-transcript.md
+[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: file tools enabled — sandbox root ~/dev/my-project — artifacts → ~/dev/my-project/gemini-artifacts
 ```
+
+To check it from Claude, ask *"what can gemini-bridge do?"*. The answer should name all seven tools and the web rules without reading any code.
 
 ---
 
@@ -135,6 +153,7 @@ Restart Claude Code after step 3. On next start you'll see startup entries in th
 | `file_tools.enabled` | `true` | Kill switch for Gemini's repository access |
 | `file_tools.deny` | secrets list | Paths Gemini may never read or write (replaces the default list when set) |
 | `file_tools.max_write_bytes` | `262144` | Size cap for a single `write_file` |
+| `web_tools.enabled` | `false` | Default for each call's `web` argument. Grounding is billed per request; Developer API (API key) only |
 | `auth.method` | `adc` | `adc` · `env` · `keychain` · `api_key` |
 | `auth.keychain_service` | `gemini-bridge` | Keychain service name (`keychain` only) |
 | `auth.keychain_account` | `vertex-sa` | Keychain account name (`keychain` only) |
@@ -166,8 +185,8 @@ code or config change.
   Flash-Lite, with a visible `[gemini-bridge notice]`.
 - **Offline:** if the model list can't be read at startup, the bridge uses pinned known-good
   defaults (`gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`) and logs a warning.
-- **Visibility:** the startup log, transcripts, and artifacts always name the concrete model
-  (never an alias). `gemini_list_models` marks the default and the newest model per family.
+- **Visibility:** the startup log and artifacts always name the concrete model (never an
+  alias); transcripts don't record the model. `gemini_list_models` marks the default and the newest model per family.
 - **Thinking levels:** the bridge picks the right API parameter per model and adapts when a
   model rejects a level (e.g. `gemini-3.8-flash` refuses the lowest level, so `thinking="none"`
   steps up to `low`). See [docs/configuration.md](docs/configuration.md#choosing-a-model).
@@ -232,12 +251,9 @@ Claude picks per call based on question complexity. See [docs/tools.md](docs/too
 
 ## Roadmap
 
-| Release | Status | Highlights |
-|---|---|---|
-| 26.7.1 | ✓ Shipped | 5 tools · ADC, env + Keychain auth · persistent sessions · transcript logging · structured logging · full docs |
-| 26.7.2 | Planned | Named sessions · per-project transcript routing · Google AI Studio API key auth |
+Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `gemini_help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/gemini-bridge/issues).
 
-See [docs/roadmap.md](docs/roadmap.md) for full phase breakdown and rationale.
+See [docs/roadmap.md](docs/roadmap.md) for what shipped when, and why.
 
 ---
 

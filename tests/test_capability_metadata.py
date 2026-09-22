@@ -386,9 +386,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
         # "Markdown artifact", not "artifact": pytest derives tmp_path from the test name,
         # so the sandbox-root line can contain the bare word.
         line = next(
-            ln
-            for ln in _full(_workspace(tmp_path)).splitlines()
-            if "Markdown artifact" in ln
+            ln for ln in _full(_workspace(tmp_path)).splitlines() if "Markdown artifact" in ln
         )
         for cap in CAPABILITIES:
             if cap.artifacts == "never":
@@ -506,9 +504,7 @@ class TestInstructionsStayWellFormed:
         ws = _workspace(
             tmp_path, deny=[f"**/{name}/**" for name in WALK_SKIP_DIRS] + list(WALK_SKIP_DIRS)
         )
-        line = next(
-            ln for ln in _full(ws).splitlines() if "skipped by glob and grep" in ln
-        )
+        line = next(ln for ln in _full(ws).splitlines() if "skipped by glob and grep" in ln)
         assert "nothing (all of them are denied)" in line
 
 
