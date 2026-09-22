@@ -108,7 +108,7 @@ _SEARCH_NOTE = (
     "everything else under the root is readable by path, though searches are not exhaustive: "
     "glob and grep skip dependency and cache directories, never follow symlinked directories, "
     "and cap their results, and read_file refuses binary files — so an empty result is not "
-    "proof of absence. The server instructions give the specifics"
+    "proof of absence. gemini_help (topic files) gives the specifics"
 )
 _NO_READ = (
     "Gemini cannot read any file, so include the code or context you want considered "
