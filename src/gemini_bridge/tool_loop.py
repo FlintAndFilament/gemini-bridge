@@ -47,9 +47,6 @@ MAX_MALFORMED_RETRIES = 2
 BUDGET_EXHAUSTED_PROMPT = "Tool budget exhausted — answer now with what you have."
 
 _ARG_PREVIEW_CHARS = 60
-# Web sources listed under an answer; the rest are counted (#80).
-MAX_SOURCES = 10
-
 Source = tuple[str, str]  # (title, uri)
 
 
@@ -155,7 +152,7 @@ def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) 
 
     Sources are named by `title` (e.g. "python.org") in the summary, where the opaque
     vertexaisearch redirect `uri` would tell a reader nothing. The (title, uri) pairs ride on
-    the records as `sources`, once per turn rather than once per query, for sources_footer().
+    the records as `sources`, once per turn rather than once per query, for sources.py.
     """
     for url, status in _fetched_urls(candidate):
         ok = status is None or "SUCCESS" in str(status).upper()
@@ -196,30 +193,6 @@ def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) 
                 sources=tuple(sources) if i == 0 else (),
             )
         )
-
-
-def sources_footer(records: list[ToolCallRecord], limit: Optional[int] = MAX_SOURCES) -> str:
-    """The web sources behind an answer, for the reply and the transcript (#80).
-
-    Search links are the API's grounding redirects, passed through as-is: resolving them to
-    the real page would cost a request per source. Empty when the call used no web source.
-    `limit=None` lists every source, for the transcript.
-    """
-    seen: dict[str, str] = {}
-    for record in records:
-        for title, uri in record.sources:
-            seen.setdefault(uri or title, title)
-    if not seen:
-        return ""
-    lines = [
-        "[gemini-bridge] Web sources (search links are Google redirects that open the real page):"
-    ]
-    shown = list(seen.items()) if limit is None else list(seen.items())[:limit]
-    for i, (uri, title) in enumerate(shown, 1):
-        lines.append(f"{i}. {title} — {uri}" if uri != title else f"{i}. {uri}")
-    if len(seen) > len(shown):
-        lines.append(f"… and {len(seen) - len(shown)} more (see the transcript)")
-    return "\n".join(lines)
 
 
 def _fetched_urls(candidate: types.Candidate) -> list[tuple[str, Optional[str]]]:
