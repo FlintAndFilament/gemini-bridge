@@ -474,3 +474,120 @@ class TestVertexCannotCarryTheFlag:
         )
         with pytest.raises(ValueError, match="only supported in"):
             genai_models._ToolConfig_to_vertex(payload)
+
+
+REDIRECT = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIabc"
+
+
+def _grounded(queries: list[str], chunks: list[tuple[str, str]]) -> types.Candidate:
+    """A final answer turn that searched: (title, uri) per grounding chunk."""
+    return types.Candidate(
+        content=types.Content(role="model", parts=[types.Part.from_text(text="the answer")]),
+        finish_reason=types.FinishReason.STOP,
+        grounding_metadata=types.GroundingMetadata(
+            web_search_queries=queries,
+            grounding_chunks=[
+                types.GroundingChunk(web=types.GroundingChunkWeb(uri=u, title=t))
+                for t, u in chunks
+            ],
+        ),
+    )
+
+
+class TestSourcesReachTheCaller:
+    """#80: the caller gets title + link for every source a web answer drew on."""
+
+    def test_search_record_carries_title_and_uri(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        records: list[ToolCallRecord] = []
+        record_grounding(_grounded(["q"], [("python.org", REDIRECT)]), records)
+        assert records[0].sources == (("python.org", REDIRECT),)
+
+    def test_sources_attach_once_not_per_query(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        records: list[ToolCallRecord] = []
+        record_grounding(_grounded(["a", "b"], [("x.test", "https://x.test")]), records)
+        assert sum(len(r.sources) for r in records) == 1
+
+    def test_sources_without_a_reported_query_are_kept(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        records: list[ToolCallRecord] = []
+        record_grounding(_grounded([], [("x.test", "https://x.test")]), records)
+        assert [s for r in records for s in r.sources] == [("x.test", "https://x.test")]
+
+    def test_retrieved_url_is_a_source_and_a_failed_one_is_not(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        candidate = types.Candidate(
+            content=types.Content(role="model", parts=[types.Part.from_text(text="a")]),
+            url_context_metadata=types.UrlContextMetadata(
+                url_metadata=[
+                    types.UrlMetadata(
+                        retrieved_url="https://ok.test",
+                        url_retrieval_status="URL_RETRIEVAL_STATUS_SUCCESS",
+                    ),
+                    types.UrlMetadata(
+                        retrieved_url="https://bad.test",
+                        url_retrieval_status="URL_RETRIEVAL_STATUS_ERROR",
+                    ),
+                ]
+            ),
+        )
+        records: list[ToolCallRecord] = []
+        record_grounding(candidate, records)
+        sources = [s for r in records for s in r.sources]
+        assert sources == [("https://ok.test", "https://ok.test")]
+
+    def test_footer_is_empty_without_sources(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, sources_footer
+
+        assert sources_footer([ToolCallRecord("read_file", {}, True, "1 B")]) == ""
+
+    def test_footer_lists_title_and_link_once_each(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, sources_footer
+
+        rec = ToolCallRecord("google_search", {"query": "q"}, True, "", (("python.org", REDIRECT),))
+        text = sources_footer([rec, rec])
+        assert text.count(REDIRECT) == 1
+        assert "python.org" in text
+        assert "redirect" in text.lower()  # the caller must know these are not the page URLs
+
+    def test_footer_is_capped(self) -> None:
+        from gemini_bridge.tool_loop import MAX_SOURCES, ToolCallRecord, sources_footer
+
+        many = tuple((f"s{i}", f"https://s{i}.test") for i in range(MAX_SOURCES + 3))
+        text = sources_footer([ToolCallRecord("google_search", {}, True, "", many)])
+        assert f"https://s{MAX_SOURCES - 1}.test" in text
+        assert f"https://s{MAX_SOURCES}.test" not in text
+        assert "3 more" in text
+
+    async def test_web_answer_ends_with_sources_and_transcript_logs_them(
+        self, tmp_path: Path
+    ) -> None:
+        from datetime import datetime
+        from unittest.mock import AsyncMock
+
+        from gemini_bridge.client import GeminiClient
+        from gemini_bridge.server import build_server
+        from gemini_bridge.transcript import TranscriptWriter
+        from gemini_bridge.workspace import build_workspace
+
+        cfg = Config(auth={"method": "api_key"})
+        with patch("google.genai.Client"):
+            client = GeminiClient(cfg, api_key="k")
+        client._raw_client.aio.models.generate_content = AsyncMock(
+            return_value=types.GenerateContentResponse(
+                candidates=[_grounded(["q"], [("python.org", REDIRECT)])]
+            )
+        )
+        transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
+        mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
+        result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
+        blocks = result[0] if isinstance(result, tuple) else result
+        text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
+        assert text.startswith("the answer")
+        assert REDIRECT in text and "python.org" in text
+        assert REDIRECT in transcript.path.read_text()
