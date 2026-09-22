@@ -47,8 +47,15 @@ def _instructions(tmp_path: Path, name: str) -> str:
     return server_instructions(**_variants(tmp_path)[name])
 
 
-VARIANTS = ("files-on", "files-on-web-default", "files-off", "no-workspace", "vertex",
-            "long-root", "long-deny")
+VARIANTS = (
+    "files-on",
+    "files-on-web-default",
+    "files-off",
+    "no-workspace",
+    "vertex",
+    "long-root",
+    "long-deny",
+)
 
 
 class TestInstructionsFitTheClientCap:
@@ -138,8 +145,15 @@ class TestHelpText:
     def test_full_help_holds_the_detail_cut_from_the_instructions(self, tmp_path: Path) -> None:
         transcript = TranscriptWriter(str(tmp_path / "transcripts"), datetime.now())
         text = _help(_workspace(tmp_path), transcript=transcript)
-        for detail in (str(transcript.path), ".env.*", "node_modules", "symlinked directories",
-                       "truncated=true", "MUTUALLY EXCLUSIVE", "attacker-controlled"):
+        for detail in (
+            str(transcript.path),
+            ".env.*",
+            "node_modules",
+            "symlinked directories",
+            "truncated=true",
+            "MUTUALLY EXCLUSIVE",
+            "attacker-controlled",
+        ):
             assert detail in text, detail
 
     def test_full_help_contains_every_topic(self, tmp_path: Path) -> None:

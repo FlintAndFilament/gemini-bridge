@@ -63,7 +63,7 @@ async def _resolve_one(client: httpx.AsyncClient, uri: str) -> Optional[str]:
     except (httpx.HTTPError, httpx.InvalidURL) as exc:
         _log.info("grounding redirect not resolved (%s): %s", type(exc).__name__, uri)
         return None
-    location = response.headers.get("location", "")
+    location = str(response.headers.get("location", ""))
     if response.is_redirect and urlsplit(location).scheme in ("http", "https"):
         return location
     _log.info("grounding redirect not resolved (HTTP %s): %s", response.status_code, uri)

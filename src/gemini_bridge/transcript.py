@@ -19,7 +19,7 @@ Raises:
   (none) — write errors are caught and logged to stderr; tool calls must not fail due to I/O
 
 Used by:  tools/*.py (via append_exchange() after each Gemini response)
-Imports:  config.py (Config)
+Imports:  (stdlib only)
 """
 
 import logging
