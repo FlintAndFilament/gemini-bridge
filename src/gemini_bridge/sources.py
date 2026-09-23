@@ -55,6 +55,19 @@ def is_grounding_redirect(uri: str) -> bool:
     )
 
 
+def _display_name(title: str, url: str) -> str:
+    """What to call a source in the footer (#90).
+
+    Google omits `title` on some grounding chunks, and an older record may carry the redirect
+    link as its name. Either way the resolved URL's hostname is the readable name; an
+    unresolved source can only fall back to the redirect's own host.
+    """
+    if title and not is_grounding_redirect(title):
+        return title
+    host = urlsplit(url).hostname or ""
+    return host.removeprefix("www.")
+
+
 async def _resolve_one(client: httpx.AsyncClient, uri: str) -> Optional[str]:
     try:
         response = await client.head(uri)
@@ -118,7 +131,8 @@ def sources_footer(
     shown = list(seen.items()) if limit is None else list(seen.items())[:limit]
     for i, (url, title) in enumerate(shown, 1):
         note = " (unresolved Google redirect)" if is_grounding_redirect(url) else ""
-        lines.append(f"{i}. {title} — {url}{note}" if url != title else f"{i}. {url}{note}")
+        name = _display_name(title, url)
+        lines.append(f"{i}. {name} — {url}{note}" if name and name != url else f"{i}. {url}{note}")
     if len(seen) > len(shown):
         lines.append(f"… and {len(seen) - len(shown)} more (see the transcript)")
     return "\n".join(lines)
