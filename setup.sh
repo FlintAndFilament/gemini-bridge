@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # setup.sh — gemini-bridge interactive configuration wizard
 # Run once after "python3 -m pip install -e ." to create ~/.config/gemini-bridge/config.json
-# Safe to re-run: overwrites existing config with new values. Existing values
-# are read and used as prompt defaults so you only change what you want.
+# Safe to re-run: existing values are read and used as prompt defaults, and only the keys the
+# wizard asks about are updated — anything else in config.json is left untouched (#85).
 
 set -euo pipefail
 
@@ -232,7 +232,8 @@ echo
 echo "Default model for calls that omit an explicit model (blank = newest Flash, found at startup):"
 echo "  aliases that track new releases: flash · flash-lite · pro — or pin an id, e.g. gemini-3.5-flash"
 echo "  (a per-call model= always overrides this; run gemini_list_models later for the full list)"
-DEFAULT_MODEL=$(ask "Default model (blank for newest Flash)" "$PREV_DEFAULT_MODEL")
+echo "  enter - to clear a saved default and go back to the newest Flash"
+DEFAULT_MODEL=$(ask "Default model (blank keeps the current value)" "$PREV_DEFAULT_MODEL")
 
 # --- transcript dir ---
 echo
@@ -241,50 +242,66 @@ TRANSCRIPT_DIR=$(ask "Transcript directory" "$PREV_TRANSCRIPT_DIR")
 # --- write config ---
 mkdir -p "$CONFIG_DIR"
 
-# Build auth JSON block — varies by method
-if [[ "$AUTH_METHOD" == "keychain" ]]; then
-    AUTH_JSON="\"auth\": {
-    \"method\": \"keychain\",
-    \"keychain_service\": \"$KEYCHAIN_SERVICE\",
-    \"keychain_account\": \"$KEYCHAIN_ACCOUNT\"
-  }"
-elif [[ "$AUTH_METHOD" == "api_key" ]]; then
-    AUTH_JSON="\"auth\": {
-    \"method\": \"api_key\",
-    \"api_key_env\": \"$API_KEY_ENV\"
-  }"
-else
-    AUTH_JSON="\"auth\": {
-    \"method\": \"$AUTH_METHOD\"
-  }"
-fi
+# The wizard updates only the keys it asked about and leaves every other one alone (#85):
+# a re-run must not delete artifacts_dir, file_tools, web_tools or anything else set by hand.
+# Values cross into python as environment variables, so no answer is ever interpolated into
+# source or JSON text. api_key mode leaves project/location untouched: the Developer API
+# endpoint ignores them, and the wizard never asked.
+SETUP_AUTH_METHOD="$AUTH_METHOD" \
+SETUP_KEYCHAIN_SERVICE="$KEYCHAIN_SERVICE" \
+SETUP_KEYCHAIN_ACCOUNT="$KEYCHAIN_ACCOUNT" \
+SETUP_API_KEY_ENV="$API_KEY_ENV" \
+SETUP_PROJECT="$PROJECT" \
+SETUP_LOCATION="$LOCATION" \
+SETUP_THINKING="$THINKING" \
+SETUP_DEFAULT_MODEL="$DEFAULT_MODEL" \
+SETUP_TRANSCRIPT_DIR="$TRANSCRIPT_DIR" \
+SETUP_CONFIG_FILE="$CONFIG_FILE" \
+python3 <<'PYEOF' || error "Could not write $CONFIG_FILE"
+import json, os, pathlib
 
-# Optional default_model line — included only when the user supplied a value.
-DEFAULT_MODEL_JSON=""
-if [[ -n "$DEFAULT_MODEL" ]]; then
-    DEFAULT_MODEL_JSON=$'  "default_model": "'"$DEFAULT_MODEL"$'",\n'
-fi
+path = pathlib.Path(os.environ["SETUP_CONFIG_FILE"])
+config = {}
+if path.exists():
+    try:
+        loaded = json.loads(path.read_text())
+    except (ValueError, OSError):
+        loaded = None
+    if isinstance(loaded, dict):
+        config = loaded
+    else:
+        # Unreadable config: keep a copy rather than destroy hand-written settings.
+        backup = path.with_suffix(".json.bak")
+        path.replace(backup)
+        print(f"WARN: {path} was not valid JSON; kept a copy at {backup}")
 
-# api_key mode: project and location are not needed (Developer API endpoint)
-if [[ "$AUTH_METHOD" == "api_key" ]]; then
-cat > "$CONFIG_FILE" <<EOF
-{
-  "default_thinking": "$THINKING",
-$DEFAULT_MODEL_JSON  "transcript_dir": "$TRANSCRIPT_DIR",
-  $AUTH_JSON
-}
-EOF
-else
-cat > "$CONFIG_FILE" <<EOF
-{
-  "project": "$PROJECT",
-  "location": "$LOCATION",
-  "default_thinking": "$THINKING",
-$DEFAULT_MODEL_JSON  "transcript_dir": "$TRANSCRIPT_DIR",
-  $AUTH_JSON
-}
-EOF
-fi
+method = os.environ["SETUP_AUTH_METHOD"]
+auth = config.get("auth")
+auth = dict(auth) if isinstance(auth, dict) else {}
+auth["method"] = method
+if method == "keychain":
+    auth["keychain_service"] = os.environ["SETUP_KEYCHAIN_SERVICE"]
+    auth["keychain_account"] = os.environ["SETUP_KEYCHAIN_ACCOUNT"]
+elif method == "api_key":
+    auth["api_key_env"] = os.environ["SETUP_API_KEY_ENV"]
+config["auth"] = auth
+
+config["default_thinking"] = os.environ["SETUP_THINKING"]
+config["transcript_dir"] = os.environ["SETUP_TRANSCRIPT_DIR"]
+if method != "api_key":
+    config["project"] = os.environ["SETUP_PROJECT"]
+    config["location"] = os.environ["SETUP_LOCATION"]
+
+# An answer left blank keeps the previous model (it was offered as the prompt default), so
+# clearing one needs an explicit "-".
+model = os.environ["SETUP_DEFAULT_MODEL"].strip()
+if model and model != "-":
+    config["default_model"] = model
+else:
+    config.pop("default_model", None)
+
+path.write_text(json.dumps(config, indent=2) + "\n")
+PYEOF
 
 info "Config written to $CONFIG_FILE"
 echo
@@ -307,8 +324,13 @@ else
 fi
 echo "  claude mcp list"
 echo
-info "Model selection is per-call (no model in config):"
-echo "  • Default model: newest Flash, resolved at server start (falls back to newest Flash-Lite on overload)"
+info "Model selection:"
+if [[ -n "$DEFAULT_MODEL" && "$DEFAULT_MODEL" != "-" ]]; then
+    echo "  • Default model: $DEFAULT_MODEL (the default_model you just set; re-run setup to change it)"
+else
+    echo "  • Default model: newest Flash, resolved at server start (falls back to newest Flash-Lite on overload)"
+    echo "  • Set default_model in config (or re-run setup) to pin a different default"
+fi
 echo "  • Pass model='<id>' to any tool to override; call gemini_list_models to see valid ids"
 echo "  • Aliases flash / flash-lite / pro track the newest release on every backend"
 echo

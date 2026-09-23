@@ -7,9 +7,11 @@ the MCP server (or Claude Code) after an edit.
 
 `setup.sh` writes only `project`, `location`, `default_thinking`, `default_model` (when you give
 one), `transcript_dir` and `auth`. Every other field below is optional and takes its default until
-you add it by hand. **Re-running `setup.sh` rewrites the whole file from those fields**, so any
-`artifacts_dir`, `file_tools` or `web_tools` you added by hand is dropped; add them back after a
-re-run. A missing file, invalid JSON, or a value that fails validation stops the server
+you add it by hand. **Re-running `setup.sh` updates only those fields and leaves the rest of the
+file alone** (#85), so an `artifacts_dir`, `file_tools` or `web_tools` you added by hand survives.
+A saved `default_model` is kept when you accept the prompt's default; enter `-` to clear it. If
+the file is not valid JSON, the wizard moves it to `config.json.bak` and starts fresh rather than
+merging into it. A missing file, invalid JSON, or a value that fails validation stops the server
 at startup with `Config file not found`, `Config file is not valid JSON`, or
 `Config validation failed: …` in the log (see [logging.md](logging.md)). Unknown keys are ignored
 silently, so check spelling if a setting seems to have no effect.
@@ -109,7 +111,9 @@ it judges a different level is appropriate.
 **Type:** string (path, `~` and `.` expanded relative to Claude Code's working directory)
 **Default:** `"./session-summaries"`
 
-Directory where transcript files are written. Created if it doesn't exist. Transcript files
+Directory where transcript files are written. Created if it doesn't exist; if it can't be
+created (read-only parent, permission denied) the server stops at startup with
+`Transcript directory cannot be created: …` instead of a traceback (#87). Transcript files
 are named `YYYYMMDD-HHMM-gemini-bridge-transcript.md` using the server startup time.
 
 The default `./session-summaries` resolves relative to the project root where Claude Code

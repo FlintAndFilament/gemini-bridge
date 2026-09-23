@@ -16,7 +16,8 @@ Design notes:
   - Transcript file is opened in append mode per exchange — no persistent file handle needed
 
 Raises:
-  (none) — write errors are caught and logged to stderr; tool calls must not fail due to I/O
+  TranscriptError — at construction, when the transcript directory cannot be created (#87).
+  Write errors after that are caught and logged; tool calls must not fail due to I/O
 
 Used by:  tools/*.py (via append_exchange() after each Gemini response)
 Imports:  (stdlib only)
@@ -31,12 +32,26 @@ from typing import Optional
 _log = logging.getLogger(__name__)
 
 
+class TranscriptError(Exception):
+    """Raised when the transcript directory cannot be created. Message is user-actionable."""
+
+
 class TranscriptWriter:
     """Writes tool exchanges to a Markdown transcript file for the current server session."""
 
     def __init__(self, config_transcript_dir: str, startup_time: datetime) -> None:
         transcript_dir = Path(config_transcript_dir).expanduser().resolve()
-        transcript_dir.mkdir(parents=True, exist_ok=True)
+        # Startup, unlike append(), fails loudly: a directory that cannot be created is a
+        # config mistake the user must fix, and an unhandled OSError here reaches Claude Code
+        # as nothing but "server failed to connect" (#87).
+        try:
+            transcript_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise TranscriptError(
+                f"Transcript directory cannot be created: {transcript_dir} ({exc.strerror}).\n"
+                "Fix: set transcript_dir in ~/.config/gemini-bridge/config.json to a writable "
+                "path, or re-run setup.sh."
+            ) from exc
         filename = startup_time.strftime("%Y%m%d-%H%M-gemini-bridge-transcript.md")
         self._path = transcript_dir / filename
 
