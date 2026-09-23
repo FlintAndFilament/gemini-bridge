@@ -39,6 +39,9 @@ from pathlib import Path
 
 _LOG_DIR = Path.home() / ".config" / "gemini-bridge" / "logs"
 _MAX_LOG_FILES = 4
+# Third-party loggers worth routing into our log file: the SDK, its transport, and httpx
+# (used by sources.py to resolve grounding redirects).
+_LIBRARY_LOGGERS = ("google", "google_genai", "httpx", "httpcore", "urllib3")
 
 
 def _setup_log_file(startup_time: datetime) -> logging.FileHandler:
@@ -73,10 +76,17 @@ def _configure_logging(startup_time: datetime) -> None:
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(formatter)
     root.addHandler(stderr_handler)
-    # Suppress chatty third-party loggers unless in DEBUG mode
-    if level > logging.DEBUG:
-        logging.getLogger("google").setLevel(logging.WARNING)
-        logging.getLogger("urllib3").setLevel(logging.WARNING)
+    # Third-party loggers need our handlers attached explicitly (#88): the handlers above sit
+    # on the "gemini_bridge" logger, which their records never pass through, so without this
+    # a library record reaches nothing but Python's last-resort stderr handler — DEBUG mode
+    # showed no library output, and setting their level alone did nothing. Below DEBUG they
+    # stay at WARNING: httpx logs every request at INFO.
+    library_level = level if level <= logging.DEBUG else logging.WARNING
+    for name in _LIBRARY_LOGGERS:
+        library = logging.getLogger(name)
+        library.setLevel(library_level)
+        library.addHandler(file_handler)
+        library.addHandler(stderr_handler)
 
 
 _startup_time = datetime.now()
