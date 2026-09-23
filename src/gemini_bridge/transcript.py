@@ -5,10 +5,12 @@ Append tool exchanges to a session transcript file in Markdown format.
 
 Responsibilities:
   - Determine the transcript file path from config.transcript_dir and startup timestamp
-  - Create the transcript directory if it does not exist
+  - Create the transcript directory if it does not exist, or fail loudly at startup with an
+    actionable message when it cannot be created (#87, #94)
   - Append each exchange (tool name, thinking level, session, prompt, tool calls, response)
     as Markdown
-  - Fail silently on write errors so a transcript failure never breaks a tool call
+  - Fail silently on write errors *after* construction, so a transcript failure never breaks
+    a tool call
 
 Design notes:
   - Single Responsibility: transcript writing only; no Gemini calls, no config loading
@@ -40,15 +42,20 @@ class TranscriptWriter:
     """Writes tool exchanges to a Markdown transcript file for the current server session."""
 
     def __init__(self, config_transcript_dir: str, startup_time: datetime) -> None:
-        transcript_dir = Path(config_transcript_dir).expanduser().resolve()
-        # Startup, unlike append(), fails loudly: a directory that cannot be created is a
-        # config mistake the user must fix, and an unhandled OSError here reaches Claude Code
-        # as nothing but "server failed to connect" (#87).
+        # Startup, unlike append(), fails loudly: a path that cannot be used is a config
+        # mistake the user must fix, and an unhandled error here reaches Claude Code as
+        # nothing but "server failed to connect" (#87).
+        #
+        # Resolving is inside the guard too (#94): expanduser() raises RuntimeError — not
+        # OSError — for an unknown ~user, and resolve() can raise on a pathological path.
+        transcript_dir = Path(config_transcript_dir)
         try:
+            transcript_dir = transcript_dir.expanduser().resolve()
             transcript_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
+            reason = getattr(exc, "strerror", None) or exc
             raise TranscriptError(
-                f"Transcript directory cannot be created: {transcript_dir} ({exc.strerror}).\n"
+                f"Transcript directory cannot be used: {config_transcript_dir} ({reason}).\n"
                 "Fix: set transcript_dir in ~/.config/gemini-bridge/config.json to a writable "
                 "path, or re-run setup.sh."
             ) from exc
