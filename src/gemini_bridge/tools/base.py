@@ -409,9 +409,10 @@ async def call_gemini(
     answer_records = records[fallback_at:] if fallback_at is not None else records
     logged = response
     resolved = await resolve_redirects(record_uris(answer_records))
-    if footer := sources_footer(answer_records, resolved):
+    # `answer=response` lets the footer flag URLs Gemini typed into the answer itself (#92).
+    if footer := sources_footer(answer_records, resolved, answer=response):
+        logged += "\n\n" + sources_footer(answer_records, resolved, limit=None, answer=response)
         response += "\n\n" + footer
-        logged += "\n\n" + sources_footer(answer_records, resolved, limit=None)
     transcript.append(
         tool_name=tool_name,
         prompt=prompt,
