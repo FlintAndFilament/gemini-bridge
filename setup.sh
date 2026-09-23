@@ -324,8 +324,13 @@ else
 fi
 echo "  claude mcp list"
 echo
-info "Model selection is per-call (no model in config):"
-echo "  • Default model: newest Flash, resolved at server start (falls back to newest Flash-Lite on overload)"
+info "Model selection:"
+if [[ -n "$DEFAULT_MODEL" && "$DEFAULT_MODEL" != "-" ]]; then
+    echo "  • Default model: $DEFAULT_MODEL (the default_model you just set; re-run setup to change it)"
+else
+    echo "  • Default model: newest Flash, resolved at server start (falls back to newest Flash-Lite on overload)"
+    echo "  • Set default_model in config (or re-run setup) to pin a different default"
+fi
 echo "  • Pass model='<id>' to any tool to override; call gemini_list_models to see valid ids"
 echo "  • Aliases flash / flash-lite / pro track the newest release on every backend"
 echo

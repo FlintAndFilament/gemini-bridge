@@ -86,3 +86,18 @@ class TestRerunKeepsHandEditedSettings:
         run_setup(home)
         assert config_of(home)["auth"]["method"] == "api_key"
         assert (home / ".config/gemini-bridge/config.json.bak").read_text() == "{ this is not json"
+
+
+class TestClosingText:
+    """The wizard prompts for default_model, so its closing text must not deny the field
+    exists (#89)."""
+
+    def test_a_chosen_default_model_is_named(self, home: Path) -> None:
+        out = run_setup(home, ["4", "", "", "flash-lite", ""]).stdout
+        assert "no model in config" not in out
+        assert "flash-lite" in out.split("Model selection")[1]
+
+    def test_no_default_model_says_newest_flash(self, home: Path) -> None:
+        out = run_setup(home).stdout
+        assert "no model in config" not in out
+        assert "newest Flash" in out.split("Model selection")[1]
