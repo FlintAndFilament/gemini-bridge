@@ -154,3 +154,23 @@ class TestApiKeyModeLeavesVertexFieldsAlone:
         assert config["project"] == "my-proj"
         assert config["location"] == "us-east4"
         assert config["auth"]["method"] == "api_key"
+
+
+class TestApiKeyEnvDefault:
+    """The saved api_key_env must come back as the prompt default on a re-run (#99: it is now
+    read by the same loader as every other PREV_* value, not by a second python3 call)."""
+
+    def test_saved_env_var_name_is_offered_again(self, home: Path) -> None:
+        run_setup(home, ["4", "MY_GEMINI_KEY", "", "", ""])
+        assert config_of(home)["auth"]["api_key_env"] == "MY_GEMINI_KEY"
+        result = run_setup(home)  # blank answer takes the default
+        assert config_of(home)["auth"]["api_key_env"] == "MY_GEMINI_KEY"
+        assert "MY_GEMINI_KEY" in result.stdout + result.stderr
+
+    def test_config_json_is_read_by_exactly_one_python_invocation(self) -> None:
+        """A second reader existed only for api_key_env, and it interpolated $CONFIG_FILE into
+        python source. The keychain validator stays: it reads a piped secret, not the config."""
+        source = SETUP.read_text()
+        assert "pathlib.Path('$CONFIG_FILE')" not in source
+        # Two `python3 -c` blocks remain: the PREV_* loader and the keychain JSON validator.
+        assert source.count("python3 -c") == 2

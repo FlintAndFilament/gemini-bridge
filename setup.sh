@@ -34,6 +34,7 @@ PREV_DEFAULT_MODEL=""
 PREV_TRANSCRIPT_DIR="./session-summaries"
 PREV_KEYCHAIN_SERVICE="gemini-bridge"
 PREV_KEYCHAIN_ACCOUNT="vertex-sa"
+PREV_API_KEY_ENV="GEMINI_API_KEY"
 
 if [[ -f "$CONFIG_FILE" ]]; then
     # shlex.quote ensures config values with spaces or special chars are safe to eval
@@ -52,6 +53,7 @@ try:
         ('PREV_TRANSCRIPT_DIR',   d.get('transcript_dir', './session-summaries')),
         ('PREV_KEYCHAIN_SERVICE', auth.get('keychain_service', 'gemini-bridge')),
         ('PREV_KEYCHAIN_ACCOUNT', auth.get('keychain_account', 'vertex-sa')),
+        ('PREV_API_KEY_ENV',      auth.get('api_key_env', 'GEMINI_API_KEY')),
     ]
     for k, v in fields:
         print(f'{k}={shlex.quote(str(v))}')
@@ -161,15 +163,7 @@ if [[ "$AUTH_METHOD" == "api_key" ]]; then
     echo
     echo "Enter the NAME of the environment variable that will hold your API key."
     echo "  >>> Do NOT paste the key here — enter a variable name like GEMINI_API_KEY <<<"
-    PREV_API_KEY_ENV=$(python3 -c "
-import json, pathlib, sys
-p = pathlib.Path('$CONFIG_FILE')
-if p.exists():
-    d = json.loads(p.read_text())
-    print(d.get('auth', {}).get('api_key_env', 'GEMINI_API_KEY'))
-else:
-    print('GEMINI_API_KEY')
-" 2>/dev/null || echo "GEMINI_API_KEY")
+    # PREV_API_KEY_ENV comes from the loader at the top — config.json is read once (#99).
     # Validate: must look like an env var name — uppercase/underscores, not an API key
     while true; do
         API_KEY_ENV=$(ask "Env var name (e.g. GEMINI_API_KEY)" "$PREV_API_KEY_ENV")
