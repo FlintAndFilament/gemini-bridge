@@ -15,7 +15,8 @@ stderr — the file is the only way to see what the server is doing.
 - At startup, all but the four newest log files are deleted, then today's file is opened — so
   there are four or five files at any time
 - The same lines also go to stderr, which is useful only when running the server by hand
-- Only the bridge's own loggers (`gemini_bridge.*`) are written; third-party library logs are not
+- The bridge's own loggers (`gemini_bridge.*`) are written in full. The libraries (`google`, `google_genai`, `httpx`, `httpcore`, `urllib3`) are written at WARNING and
+  above, or in full at `DEBUG` (#88)
 
 ## Tail live
 
@@ -34,7 +35,7 @@ also means `INFO`.
 | `INFO` | Startup: backend, default and fallback model, resolved latest models, transcript path, file-tools state with sandbox root and artifacts directory. Also a file tool that raised, and a grounding redirect that did not resolve | Default — daily use |
 | `WARNING` | Retries on 503/429 and falling back to the fallback model; thinking-level adjustments; web access requested on Vertex; sandbox rejections; `grep` timeouts; tool-loop round cap; malformed function calls; empty Gemini responses; latest-model resolution failures; transcript write failures | Included at INFO |
 | `ERROR` | Startup failures (config, auth with method and source, `artifacts_dir`); inference failures (with tool + session); fallback also failed; overload after a write (not retried); artifact not saved; `models.list` failures | Included at INFO |
-| `DEBUG` | Per call: tool, session, model, thinking level; request model, prompt length, number of file tools, web on/off; response length; credential loading; session-cache evictions | Troubleshooting |
+| `DEBUG` | Per call: tool, session, model, thinking level; request model, prompt length, number of file tools, web on/off; response length; credential loading; session-cache evictions. Also the libraries' own debug output, including one httpx line per HTTP request | Troubleshooting |
 
 ## Example log output
 
