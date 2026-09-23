@@ -95,7 +95,7 @@ def main() -> None:
     from gemini_bridge.config import ConfigError, load_config
     from gemini_bridge.sandbox import SandboxError
     from gemini_bridge.server import build_server
-    from gemini_bridge.transcript import TranscriptWriter
+    from gemini_bridge.transcript import TranscriptError, TranscriptWriter
     from gemini_bridge.workspace import build_workspace
 
     try:
@@ -128,7 +128,11 @@ def main() -> None:
         "latest models: %s",
         ", ".join(f"{family}={mid}" for family, mid in latest.items()) or "unresolved (pinned)",
     )
-    transcript = TranscriptWriter(config.transcript_dir, startup_time)
+    try:
+        transcript = TranscriptWriter(config.transcript_dir, startup_time)
+    except TranscriptError as exc:
+        _log.error("startup failed — %s", exc)
+        sys.exit(1)
 
     _log.info("transcript → %s", transcript.path)
 

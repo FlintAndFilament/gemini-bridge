@@ -111,7 +111,9 @@ it judges a different level is appropriate.
 **Type:** string (path, `~` and `.` expanded relative to Claude Code's working directory)
 **Default:** `"./session-summaries"`
 
-Directory where transcript files are written. Created if it doesn't exist. Transcript files
+Directory where transcript files are written. Created if it doesn't exist; if it can't be
+created (read-only parent, permission denied) the server stops at startup with
+`Transcript directory cannot be created: …` instead of a traceback (#87). Transcript files
 are named `YYYYMMDD-HHMM-gemini-bridge-transcript.md` using the server startup time.
 
 The default `./session-summaries` resolves relative to the project root where Claude Code
