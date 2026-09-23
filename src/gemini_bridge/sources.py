@@ -23,6 +23,7 @@ Imports:  httpx, tool_loop.py (ToolCallRecord)
 
 import asyncio
 import logging
+import re
 from collections.abc import Iterable, Mapping
 from typing import Optional
 from urllib.parse import urlsplit
@@ -39,6 +40,15 @@ RESOLVE_TIMEOUT_SECONDS = 3.0
 
 _REDIRECT_HOST = "vertexaisearch.cloud.google.com"
 _REDIRECT_PATH = "/grounding-api-redirect/"
+
+TYPED_URL_CAUTION = (
+    "[gemini-bridge] The answer above contains links Gemini typed itself. Gemini is asked not "
+    "to, but an explicit request for links overrides that, and the URLs it types are often "
+    "plausible and wrong. Trust the recorded list below instead."
+)
+
+# A URL Gemini typed into its answer, as opposed to one the bridge recorded (#92).
+_TYPED_URL = re.compile(r"https?://\S", re.IGNORECASE)
 
 FOOTER_HEADING = (
     "[gemini-bridge] Sources the bridge recorded from Google's grounding metadata (these are "
@@ -112,12 +122,17 @@ def sources_footer(
     records: Iterable[ToolCallRecord],
     resolved: Optional[Mapping[str, str]] = None,
     limit: Optional[int] = MAX_SOURCES,
+    answer: Optional[str] = None,
 ) -> str:
     """The web sources behind an answer, for the reply and the transcript (#80, #82).
 
     Each source shows its real URL when `resolved` has one, else the link as recorded.
     Sources are deduplicated by final URL. Empty when the call used no web source.
     `limit=None` lists every source, for the transcript.
+
+    When `answer` holds URLs, the footer opens with TYPED_URL_CAUTION: those links came from
+    the model, not from the grounding metadata, and may be fabricated (#92). The answer itself
+    is never rewritten — stripping URLs would mangle code blocks and quoted text.
     """
     resolved = resolved or {}
     seen: dict[str, str] = {}
@@ -127,7 +142,8 @@ def sources_footer(
             seen.setdefault(url or title, title)
     if not seen:
         return ""
-    lines = [FOOTER_HEADING]
+    lines = [TYPED_URL_CAUTION] if answer and _TYPED_URL.search(answer) else []
+    lines.append(FOOTER_HEADING)
     shown = list(seen.items()) if limit is None else list(seen.items())[:limit]
     for i, (url, title) in enumerate(shown, 1):
         note = " (unresolved Google redirect)" if is_grounding_redirect(url) else ""
