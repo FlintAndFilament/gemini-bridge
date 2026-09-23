@@ -1,7 +1,9 @@
 """Tests for gemini_bridge/auth.py — build_credentials() dispatch and error handling."""
 
 import json
+import re
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,18 +43,53 @@ class TestADC:
 
 
 class TestEnv:
-    def test_env_returns_credentials(self) -> None:
-        mock_creds = MagicMock()
-        with patch("google.auth.default", return_value=(mock_creds, "project")):
-            result = build_credentials(_env_config())
-        assert result is mock_creds
+    """method 'env' must use GOOGLE_APPLICATION_CREDENTIALS and nothing else: google.auth.default
+    silently falls back to the user's gcloud ADC, which would run the server as the user
+    instead of the configured service account (#86)."""
 
-    def test_env_raises_auth_error_on_missing_var(self) -> None:
+    NO_ADC = patch("google.auth.default", side_effect=AssertionError("ADC must not be used"))
+
+    def test_unset_var_fails_instead_of_borrowing_adc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        with self.NO_ADC, pytest.raises(AuthError, match="GOOGLE_APPLICATION_CREDENTIALS"):
+            build_credentials(_env_config())
+
+    def test_missing_key_file_names_the_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        missing = tmp_path / "sa-key.json"
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(missing))
+        with self.NO_ADC, pytest.raises(AuthError, match=re.escape(str(missing))):
+            build_credentials(_env_config())
+
+    def test_key_file_is_loaded_explicitly(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        key_file = tmp_path / "sa-key.json"
+        key_file.write_text("{}")
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(key_file))
+        mock_creds = MagicMock()
+        with patch(
+            "google.auth.load_credentials_from_file", return_value=(mock_creds, "project")
+        ) as loader:
+            with self.NO_ADC:
+                result = build_credentials(_env_config())
+        assert result is mock_creds
+        assert loader.call_args.args[0] == str(key_file)
+
+    def test_unreadable_key_file_raises_auth_error(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         import google.auth.exceptions
 
+        key_file = tmp_path / "sa-key.json"
+        key_file.write_text("not json")
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(key_file))
         with patch(
-            "google.auth.default",
-            side_effect=google.auth.exceptions.DefaultCredentialsError("no env"),
+            "google.auth.load_credentials_from_file",
+            side_effect=google.auth.exceptions.DefaultCredentialsError("bad file"),
         ):
             with pytest.raises(AuthError, match="GOOGLE_APPLICATION_CREDENTIALS"):
                 build_credentials(_env_config())
