@@ -517,10 +517,12 @@ class TestVertexCannotCarryTheFlag:
 REDIRECT = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIabc"
 
 
-def _grounded(queries: list[str], chunks: list[tuple[str, str]]) -> types.Candidate:
+def _grounded(
+    queries: list[str], chunks: list[tuple[str, str]], text: str = "the answer"
+) -> types.Candidate:
     """A final answer turn that searched: (title, uri) per grounding chunk."""
     return types.Candidate(
-        content=types.Content(role="model", parts=[types.Part.from_text(text="the answer")]),
+        content=types.Content(role="model", parts=[types.Part.from_text(text=text)]),
         finish_reason=types.FinishReason.STOP,
         grounding_metadata=types.GroundingMetadata(
             web_search_queries=queries,
@@ -635,6 +637,44 @@ class TestSourcesReachTheCaller:
         assert real in text and "python.org" in text
         assert REDIRECT not in text
         assert real in transcript.path.read_text()
+
+    async def test_links_typed_in_the_answer_are_flagged(self, tmp_path: Path) -> None:
+        """Gemini is told not to write URLs, but an explicit user request overrides that, and
+        the ones it types can be fabricated. The reply says which list is authoritative (#92)."""
+        from datetime import datetime
+        from unittest.mock import AsyncMock
+
+        from gemini_bridge.client import GeminiClient
+        from gemini_bridge.server import build_server
+        from gemini_bridge.sources import TYPED_URL_CAUTION
+        from gemini_bridge.transcript import TranscriptWriter
+        from gemini_bridge.workspace import build_workspace
+
+        cfg = Config(auth={"method": "api_key"})
+        with patch("google.genai.Client"):
+            client = GeminiClient(cfg, api_key="k")
+        client._raw_client.aio.models.generate_content = AsyncMock(
+            return_value=types.GenerateContentResponse(
+                candidates=[
+                    _grounded(
+                        ["q"],
+                        [("python.org", REDIRECT)],
+                        text="See https://www.python.org/invented/path for details.",
+                    )
+                ]
+            )
+        )
+        transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
+        mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
+        resolver = AsyncMock(return_value={REDIRECT: "https://www.python.org/downloads/"})
+        with patch("gemini_bridge.tools.base.resolve_redirects", resolver):
+            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
+        blocks = result[0] if isinstance(result, tuple) else result
+        text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
+        assert TYPED_URL_CAUTION in text
+        # The answer itself is left exactly as Gemini wrote it.
+        assert "https://www.python.org/invented/path" in text
+        assert TYPED_URL_CAUTION in transcript.path.read_text()
 
     async def test_web_off_adds_no_footer_and_makes_no_request(self, tmp_path: Path) -> None:
         from datetime import datetime

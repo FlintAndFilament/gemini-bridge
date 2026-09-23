@@ -5,6 +5,7 @@ import pytest
 
 from gemini_bridge.sources import (
     FOOTER_HEADING,
+    TYPED_URL_CAUTION,
     resolve_redirects,
     sources_footer,
 )
@@ -161,3 +162,30 @@ class TestSourceNames:
     def test_a_real_title_is_left_alone(self) -> None:
         text = sources_footer([_search(("Python Downloads", REDIRECT))], {REDIRECT: self.PYTHON})
         assert f"1. Python Downloads — {self.PYTHON}" in text
+
+
+class TestTypedUrlCaution:
+    """Gemini is told not to write URLs, but an explicit user request ("include links") beats
+    that instruction and it fabricates plausible ones. The footer says which list is the
+    recorded one (#92)."""
+
+    def test_a_url_in_the_answer_is_flagged_as_unverified(self) -> None:
+        text = sources_footer(
+            [_search(("ai.google.dev", REDIRECT))],
+            {REDIRECT: REAL},
+            answer="See https://ai.google.dev/docs for details.",
+        )
+        assert TYPED_URL_CAUTION in text
+        assert text.index(TYPED_URL_CAUTION) < text.index(FOOTER_HEADING)
+
+    def test_an_answer_without_urls_is_not_flagged(self) -> None:
+        text = sources_footer(
+            [_search(("ai.google.dev", REDIRECT))],
+            {REDIRECT: REAL},
+            answer="Gemini 3.1 Pro is documented on ai.google.dev.",
+        )
+        assert TYPED_URL_CAUTION not in text
+
+    def test_no_answer_given_means_no_caution(self) -> None:
+        text = sources_footer([_search(("ai.google.dev", REDIRECT))], {REDIRECT: REAL})
+        assert TYPED_URL_CAUTION not in text
