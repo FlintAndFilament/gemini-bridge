@@ -259,6 +259,7 @@ SETUP_TRANSCRIPT_DIR="$TRANSCRIPT_DIR" \
 SETUP_CONFIG_FILE="$CONFIG_FILE" \
 python3 <<'PYEOF' || error "Could not write $CONFIG_FILE"
 import json, os, pathlib
+from datetime import datetime
 
 path = pathlib.Path(os.environ["SETUP_CONFIG_FILE"])
 config = {}
@@ -270,8 +271,14 @@ if path.exists():
     if isinstance(loaded, dict):
         config = loaded
     else:
-        # Unreadable config: keep a copy rather than destroy hand-written settings.
-        backup = path.with_suffix(".json.bak")
+        # Unreadable config: keep a copy rather than destroy hand-written settings. The name
+        # carries a timestamp so a second broken run cannot overwrite the first copy (#96).
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = path.with_name(f"{path.name}.{stamp}.bak")
+        attempt = 1
+        while backup.exists():
+            backup = path.with_name(f"{path.name}.{stamp}-{attempt}.bak")
+            attempt += 1
         path.replace(backup)
         print(f"WARN: {path} was not valid JSON; kept a copy at {backup}")
 
@@ -300,7 +307,11 @@ if model and model != "-":
 else:
     config.pop("default_model", None)
 
-path.write_text(json.dumps(config, indent=2) + "\n")
+# Write through a temp file in the same directory and rename: a crash or a full disk then
+# leaves the previous config intact instead of a half-written one with no backup (#95).
+tmp = path.with_name(f"{path.name}.tmp")
+tmp.write_text(json.dumps(config, indent=2) + "\n")
+os.replace(tmp, path)
 PYEOF
 
 info "Config written to $CONFIG_FILE"
