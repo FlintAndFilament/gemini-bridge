@@ -29,7 +29,7 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, cast
 
 _log = logging.getLogger(__name__)
 
@@ -72,18 +72,44 @@ def _load_adc(auth_config: AuthConfig) -> google.auth.credentials.Credentials:
         ) from exc
 
 
+_ENV_CREDENTIALS_VAR = "GOOGLE_APPLICATION_CREDENTIALS"
+_ENV_FIX = f"Fix: export {_ENV_CREDENTIALS_VAR}=/path/to/sa-key.json"
+
+
 def _load_env(auth_config: AuthConfig) -> google.auth.credentials.Credentials:
-    """Load service account credentials from GOOGLE_APPLICATION_CREDENTIALS env var."""
+    """Load credentials from the file named by GOOGLE_APPLICATION_CREDENTIALS.
+
+    The variable and the file are checked here, and the file is then loaded explicitly, because
+    google.auth.default() falls back to the user's gcloud ADC when the variable is unset. That
+    fallback would silently run the server as the user instead of the configured service
+    account, and only fail if ADC were missing too (#86).
+    """
+    path = os.environ.get(_ENV_CREDENTIALS_VAR, "").strip()
+    if not path:
+        _log.error("%s is not set", _ENV_CREDENTIALS_VAR)
+        raise AuthError(
+            f"Gemini auth error: auth method is 'env' but {_ENV_CREDENTIALS_VAR} is not set.\n"
+            f"{_ENV_FIX}"
+        )
+    if not os.path.isfile(path):
+        _log.error("%s points at a missing file: %s", _ENV_CREDENTIALS_VAR, path)
+        raise AuthError(
+            f"Gemini auth error: {_ENV_CREDENTIALS_VAR} points at a file that does not "
+            f"exist: {path}\n{_ENV_FIX}"
+        )
     try:
-        credentials, _ = google.auth.default(scopes=_VERTEX_SCOPES)
-        _log.debug("env credentials loaded")
-        return credentials
-    except google.auth.exceptions.DefaultCredentialsError as exc:
+        # google-auth ships no annotation for this helper; the return type is documented.
+        loaded, _ = google.auth.load_credentials_from_file(  # type: ignore[no-untyped-call]
+            path, scopes=_VERTEX_SCOPES
+        )
+    except (google.auth.exceptions.GoogleAuthError, ValueError, OSError) as exc:
         _log.error("env credential load failed: %s", exc)
         raise AuthError(
-            "Gemini auth error: GOOGLE_APPLICATION_CREDENTIALS not set or file unreadable.\n"
-            "Fix: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json"
+            f"Gemini auth error: {_ENV_CREDENTIALS_VAR} file could not be loaded: {path}\n"
+            f"({exc})\n{_ENV_FIX}"
         ) from exc
+    _log.debug("env credentials loaded from %s", path)
+    return cast(google.auth.credentials.Credentials, loaded)
 
 
 def _load_keychain(auth_config: AuthConfig) -> google.auth.credentials.Credentials:

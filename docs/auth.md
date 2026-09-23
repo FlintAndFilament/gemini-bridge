@@ -94,11 +94,11 @@ Use a service account key file on disk. Set the environment variable **before st
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-The server loads credentials through Google's standard credential discovery, which checks
-`GOOGLE_APPLICATION_CREDENTIALS` first. If the variable is not set in the server's environment,
-discovery falls back to your ADC user credentials (if any) rather than failing, so a missing
-variable can silently run the server as you instead of the service account. To be sure the
-variable reaches the server, pass it at registration:
+The server reads `GOOGLE_APPLICATION_CREDENTIALS` itself and loads that file explicitly. It
+never falls back to your ADC user credentials: an unset variable or a missing file stops
+startup with a message naming the problem (#86), so this method can no longer run the server
+as you instead of the service account. To be sure the variable reaches the server, pass it at
+registration:
 `claude mcp add gemini-bridge -s user -e GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json -- python3 -m gemini_bridge`.
 
 **Setup steps:**
@@ -224,7 +224,7 @@ once to the newest Flash-Lite (see [configuration.md](configuration.md#choosing-
 | `no ADC credentials found` | ADC not configured | `gcloud auth application-default login` |
 | Token refresh / `invalid_grant` errors on a call | ADC refresh token expired or revoked | `gcloud auth application-default login` |
 | `403 PERMISSION_DENIED: quota project not set` | ADC user credentials have no quota project | `gcloud auth application-default set-quota-project YOUR_PROJECT_ID` |
-| `GOOGLE_APPLICATION_CREDENTIALS not set or file unreadable` | `env` method: no usable credentials found (variable unset and no ADC fallback, or the file can't be read) | `export GOOGLE_APPLICATION_CREDENTIALS=...` or pass it with `-e` at registration |
+| `auth method is 'env' but GOOGLE_APPLICATION_CREDENTIALS is not set` / `points at a file that does not exist` / `file could not be loaded` | `env` method: the variable is unset, names a missing file, or names a file google-auth cannot read. ADC is never used as a fallback | `export GOOGLE_APPLICATION_CREDENTIALS=...` or pass it with `-e` at registration; check the path and the file's contents |
 | `Keychain item not found` | Secret not stored | Re-run the `security add-generic-password` command |
 | `not valid service account JSON` | Keychain value corrupted | Re-store the SA JSON key |
 | `'security' CLI not found` | Not macOS | Keychain method is macOS-only |
