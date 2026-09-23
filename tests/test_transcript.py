@@ -108,3 +108,13 @@ def test_unusable_transcript_dir_raises_an_actionable_error(tmp_path: Path) -> N
     message = str(exc.value)
     assert "transcript_dir" in message
     assert str(blocker / "transcripts") in message
+
+
+def test_unresolvable_home_is_an_actionable_error_too() -> None:
+    """expanduser() raises RuntimeError, not OSError, for an unknown ~user — it has to be
+    inside the same guard or #87's raw traceback survives (#94)."""
+    with pytest.raises(TranscriptError) as exc:
+        TranscriptWriter("~nosuchuser12345/transcripts", datetime.now())
+    message = str(exc.value)
+    assert "transcript_dir" in message
+    assert "~nosuchuser12345/transcripts" in message
