@@ -180,8 +180,10 @@ def record_grounding(candidate: types.Candidate, records: list[ToolCallRecord]) 
         name = getattr(web, "title", None) or getattr(web, "domain", None) or ""
         if (name or uri) and all(s != (name, uri) for s in sources):
             sources.append((name, uri))
+    # Count the sources, name only the ones that have a name: since #90 an untitled source
+    # carries an empty name, and counting names would report it as no source at all.
     titles = list(dict.fromkeys(name for name, _ in sources if name))
-    summary = f"{len(titles)} source(s)" + (f": {', '.join(titles[:5])}" if titles else "")
+    summary = f"{len(sources)} source(s)" + (f": {', '.join(titles[:5])}" if titles else "")
     queries = list(meta.web_search_queries or [])
     if not queries and sources:
         queries = ["(query not reported)"]

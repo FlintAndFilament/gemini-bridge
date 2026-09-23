@@ -388,6 +388,26 @@ class TestGroundingIsRecorded:
         record_grounding(candidate, records)
         assert records[0].sources == (("", redirect),)
         assert "vertexaisearch" not in records[0].summary
+        # The count is of sources, not of names: an untitled source is still a source.
+        assert records[0].summary.startswith("1 source(s)")
+
+    def test_untitled_sources_are_counted_beside_named_ones(self) -> None:
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        chunks = [
+            types.GroundingChunk(web=types.GroundingChunkWeb(uri="https://x.test", title="x.test")),
+            types.GroundingChunk(web=types.GroundingChunkWeb(uri="https://y.test")),
+            types.GroundingChunk(web=types.GroundingChunkWeb(uri="https://z.test")),
+        ]
+        candidate = types.Candidate(
+            content=types.Content(role="model", parts=[types.Part.from_text(text="a")]),
+            grounding_metadata=types.GroundingMetadata(
+                web_search_queries=["q"], grounding_chunks=chunks
+            ),
+        )
+        records: list[ToolCallRecord] = []
+        record_grounding(candidate, records)
+        assert records[0].summary == "3 source(s): x.test"
 
     def test_duplicate_sources_are_collapsed(self) -> None:
         from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
