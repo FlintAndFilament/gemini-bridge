@@ -4,7 +4,9 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from gemini_bridge.transcript import TranscriptWriter, _format_exchange
+import pytest
+
+from gemini_bridge.transcript import TranscriptError, TranscriptWriter, _format_exchange
 
 
 def test_transcript_file_created() -> None:
@@ -93,3 +95,16 @@ def test_append_without_tool_calls_has_no_section(tmp_path: Path) -> None:
     writer = TranscriptWriter(str(tmp_path), datetime.now())
     writer.append(tool_name="gemini_ask", prompt="p", response="r", thinking="low")
     assert "Tool calls" not in writer.path.read_text()
+
+
+def test_unusable_transcript_dir_raises_an_actionable_error(tmp_path: Path) -> None:
+    """A transcript_dir that cannot be created must not crash startup with a raw traceback:
+    it names the directory and the config field, like the config and auth errors (#87)."""
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a directory")
+
+    with pytest.raises(TranscriptError) as exc:
+        TranscriptWriter(str(blocker / "transcripts"), datetime.now())
+    message = str(exc.value)
+    assert "transcript_dir" in message
+    assert str(blocker / "transcripts") in message
