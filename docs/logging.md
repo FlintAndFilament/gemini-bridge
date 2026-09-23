@@ -17,6 +17,10 @@ stderr — the file is the only way to see what the server is doing.
 - The same lines also go to stderr, which is useful only when running the server by hand
 - The bridge's own loggers (`gemini_bridge.*`) are written in full. The libraries (`google`, `google_genai`, `httpx`, `httpcore`, `urllib3`) are written at WARNING and
   above, or in full at `DEBUG` (#88)
+- Records carrying a google-auth HTTP payload (`httpRequest`/`httpResponse`, which hold raw
+  request headers and bodies) are dropped before reaching either handler, so no bearer token or
+  service-account assertion can land in the log file (#98)
+- `DEBUG` raises library verbosity considerably — useful for troubleshooting, not for leaving on
 
 ## Tail live
 
