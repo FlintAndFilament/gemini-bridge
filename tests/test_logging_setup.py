@@ -18,6 +18,15 @@ import gemini_bridge.__main__  # configures logging on import
 logging.getLogger("gemini_bridge.probe").info("OWN_PROBE")
 logging.getLogger("httpx").warning("LIB_WARNING_PROBE")
 logging.getLogger("google").debug("LIB_DEBUG_PROBE")
+
+# What google.auth.transport.requests emits at DEBUG: the payload rides in `extra`.
+logging.getLogger("google.auth.transport.requests").debug(
+    "PAYLOAD_PROBE",
+    extra={"httpRequest": {"headers": {"authorization": "Bearer SECRET_TOKEN_PROBE"}}},
+)
+logging.getLogger("google.auth.transport.requests").debug(
+    "RESPONSE_PAYLOAD_PROBE", extra={"httpResponse": {"body": "SECRET_BODY_PROBE"}}
+)
 """
 
 
@@ -52,4 +61,18 @@ class TestLibraryLogging:
         assert "LIB_DEBUG_PROBE" not in log_text(home, "INFO")
 
     def test_debug_mode_includes_library_debug(self, home: Path) -> None:
+        assert "LIB_DEBUG_PROBE" in log_text(home, "DEBUG")
+
+
+class TestCredentialPayloadsAreDropped:
+    """google-auth puts the request URL, raw headers and body in record.extra. Today's
+    %(message)s formatter happens to discard them; the drop must be deliberate, or switching
+    to a structured formatter would start writing tokens into the log file (#98)."""
+
+    def test_a_record_carrying_an_http_payload_is_not_written(self, home: Path) -> None:
+        text = log_text(home, "DEBUG")
+        assert "PAYLOAD_PROBE" not in text
+        assert "RESPONSE_PAYLOAD_PROBE" not in text
+
+    def test_ordinary_library_debug_still_gets_through(self, home: Path) -> None:
         assert "LIB_DEBUG_PROBE" in log_text(home, "DEBUG")

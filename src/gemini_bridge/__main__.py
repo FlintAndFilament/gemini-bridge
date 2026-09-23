@@ -58,6 +58,21 @@ def _setup_log_file(startup_time: datetime) -> logging.FileHandler:
     return logging.FileHandler(log_file, mode="a", encoding="utf-8")
 
 
+class _DropHttpPayloads(logging.Filter):
+    """Drop records carrying a google-auth HTTP payload (#98).
+
+    `google.auth.transport.requests` logs the request URL, the **raw** headers and the body
+    under `extra={"httpRequest"/"httpResponse": ...}` at DEBUG. It hashes access and refresh
+    tokens but not a service-account assertion JWT, and headers carry bearer tokens verbatim.
+    Our `%(message)s` formatter renders no extras, so none of it reaches the log file today —
+    but that is incidental, and a structured formatter would silently start writing credential
+    material into a file that lives for days. Dropping the records makes the property explicit.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not (hasattr(record, "httpRequest") or hasattr(record, "httpResponse"))
+
+
 def _configure_logging(startup_time: datetime) -> None:
     """Set up file + stderr logging before any module that calls getLogger() is imported."""
     raw_level = os.environ.get("GEMINI_BRIDGE_LOG_LEVEL", "INFO").upper()
@@ -66,15 +81,21 @@ def _configure_logging(startup_time: datetime) -> None:
         fmt="[gemini-bridge] %(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    # On the handlers, not the loggers: a logger's filters do not run for records that
+    # propagate up from its children, so google.auth.transport.requests would bypass one
+    # attached to "google".
+    payload_filter = _DropHttpPayloads()
     root = logging.getLogger("gemini_bridge")
     root.setLevel(level)
     # File handler — primary; visible via tail
     file_handler = _setup_log_file(startup_time)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(payload_filter)
     root.addHandler(file_handler)
     # Stderr handler — useful when running server manually; swallowed by Claude Code
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(formatter)
+    stderr_handler.addFilter(payload_filter)
     root.addHandler(stderr_handler)
     # Third-party loggers need our handlers attached explicitly (#88): the handlers above sit
     # on the "gemini_bridge" logger, which their records never pass through, so without this
