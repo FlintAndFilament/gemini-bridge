@@ -138,3 +138,26 @@ class TestFooter:
         from gemini_bridge.sources import MAX_SOURCES
 
         assert MAX_SOURCES >= 25
+
+
+class TestSourceNames:
+    """A source with no title must not be named after the opaque redirect link (#90)."""
+
+    PYTHON = "https://www.python.org/downloads/"
+
+    def test_titleless_source_is_named_after_the_resolved_host(self) -> None:
+        text = sources_footer([_search(("", REDIRECT))], {REDIRECT: self.PYTHON})
+        assert f"1. python.org — {self.PYTHON}" in text
+
+    def test_name_that_is_itself_a_redirect_is_replaced(self) -> None:
+        text = sources_footer([_search((REDIRECT, REDIRECT))], {REDIRECT: self.PYTHON})
+        assert f"1. python.org — {self.PYTHON}" in text
+        assert "vertexaisearch" not in text
+
+    def test_unresolved_titleless_source_falls_back_to_the_redirect_host(self) -> None:
+        text = sources_footer([_search(("", REDIRECT))], {})
+        assert f"1. vertexaisearch.cloud.google.com — {REDIRECT} (unresolved" in text
+
+    def test_a_real_title_is_left_alone(self) -> None:
+        text = sources_footer([_search(("Python Downloads", REDIRECT))], {REDIRECT: self.PYTHON})
+        assert f"1. Python Downloads — {self.PYTHON}" in text

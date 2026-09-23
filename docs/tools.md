@@ -202,7 +202,8 @@ caller can check a claim instead of taking it on trust:
 2. https://docs.python.org/3/whatsnew/3.14.html
 ```
 
-A search source shows `title — URL`; a fetched URL is listed on its own. The list comes from
+A search source shows `title — URL`; a fetched URL is listed on its own. When Google reports no
+title for a source, it is named after the hostname of its resolved URL (#90). The list comes from
 the API's grounding metadata, not from Gemini's text, and is deduplicated by final URL. Gemini
 is told not to write URLs itself and to name a source by its site or title instead, because when
 asked to cite it produces plausible but wrong ones. If the call fell back to another model, only

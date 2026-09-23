@@ -371,6 +371,24 @@ class TestGroundingIsRecorded:
         assert "python.org" in records[0].summary
         assert "vertexaisearch" not in records[0].summary
 
+    def test_titleless_source_is_recorded_with_no_name(self) -> None:
+        """Without a title the name must stay empty so the footer can name the source after
+        its resolved URL; the redirect link is not a name (#90)."""
+        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+
+        redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIabc"
+        candidate = types.Candidate(
+            content=types.Content(role="model", parts=[types.Part.from_text(text="a")]),
+            grounding_metadata=types.GroundingMetadata(
+                web_search_queries=["q"],
+                grounding_chunks=[types.GroundingChunk(web=types.GroundingChunkWeb(uri=redirect))],
+            ),
+        )
+        records: list[ToolCallRecord] = []
+        record_grounding(candidate, records)
+        assert records[0].sources == (("", redirect),)
+        assert "vertexaisearch" not in records[0].summary
+
     def test_duplicate_sources_are_collapsed(self) -> None:
         from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
 
