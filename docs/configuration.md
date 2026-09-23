@@ -10,8 +10,10 @@ one), `transcript_dir` and `auth`. Every other field below is optional and takes
 you add it by hand. **Re-running `setup.sh` updates only those fields and leaves the rest of the
 file alone** (#85), so an `artifacts_dir`, `file_tools` or `web_tools` you added by hand survives.
 A saved `default_model` is kept when you accept the prompt's default; enter `-` to clear it. If
-the file is not valid JSON, the wizard moves it to `config.json.bak` and starts fresh rather than
-merging into it. A missing file, invalid JSON, or a value that fails validation stops the server
+the file is not valid JSON, the wizard moves it aside to `config.json.<timestamp>.bak` — one copy
+per broken run, never overwritten (#96) — and starts fresh rather than merging into it. The merged
+file is written through a temp file and renamed into place, so an interrupted write cannot leave a
+half-written config (#95). A missing file, invalid JSON, or a value that fails validation stops the server
 at startup with `Config file not found`, `Config file is not valid JSON`, or
 `Config validation failed: …` in the log (see [logging.md](logging.md)). Unknown keys are ignored
 silently, so check spelling if a setting seems to have no effect.
