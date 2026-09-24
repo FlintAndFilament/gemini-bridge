@@ -1,6 +1,6 @@
 # Authentication
 
-gemini-bridge supports four auth methods, set by `auth.method` in
+sidekick supports four auth methods, set by `auth.method` in
 `~/.config/gemini-bridge/config.json` (see [configuration.md](configuration.md)):
 
 | Method | Backend | Needs a GCP project | Web access (`web=true`) |
