@@ -6,7 +6,7 @@
   <img alt="MCP" src="https://img.shields.io/badge/MCP-1.28+-green.svg">
   <img alt="Backends" src="https://img.shields.io/badge/backend-Developer%20API%20%7C%20Vertex%20AI-orange.svg">
   <img alt="Auth" src="https://img.shields.io/badge/auth-API%20key%20%7C%20ADC%20%7C%20env%20%7C%20Keychain-purple.svg">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-611%20passing-brightgreen.svg">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-667%20passing-brightgreen.svg">
 </p>
 
 gemini-bridge is an MCP server that gives Claude Code a live Gemini counterpart. When Claude is working on a hard problem — an architectural decision, a tricky bug, a code review — it can consult Gemini as a second opinion without switching tools or context.
@@ -101,32 +101,29 @@ sequenceDiagram
 
 ## Quick start
 
-```bash
-# 1. Clone and install
-git clone https://github.com/FlintAndFilament/gemini-bridge.git
-cd gemini-bridge
-python3 -m pip install -e .
-
-# 2. Configure (interactive wizard — reads existing config as defaults on re-run)
-bash setup.sh
-
-# 3. Register with Claude Code
-#    API key auth (easiest). Export the key first — keep the quotes, keys can
-#    contain shell-special characters — then reference it with -e so it lands in
-#    the server's own environment. The server name 'gemini-bridge' MUST come
-#    first: omit it and 'claude mcp add' treats 'python3' as the name and the
-#    server shows up as "python3: -m gemini_bridge - ✘ Failed to connect".
-export GEMINI_API_KEY="your-key-here"
-claude mcp add gemini-bridge -s user -e GEMINI_API_KEY="$GEMINI_API_KEY" -- python3 -m gemini_bridge
-
-#    Vertex AI auth (adc / env / keychain) instead? Drop the -e flag:
-#    claude mcp add gemini-bridge -s user -- python3 -m gemini_bridge
-
-# 4. Verify
-claude mcp list
+```
+/plugin marketplace add FlintAndFilament/gemini-bridge
+/plugin install sidekick@sidekick
+/sidekick:setup
 ```
 
-Restart Claude Code after step 3. On next start you'll see startup entries in the log:
+Requires [uv](https://docs.astral.sh/uv/); `/sidekick:setup` offers to install it.
+api_key users: export your key (e.g. `export GEMINI_API_KEY="…"`) in the shell that starts Claude Code.
+Windows: not yet tested end to end.
+
+## Migrating from the manual install
+
+If you installed gemini-bridge manually, before it was a plugin:
+
+```bash
+claude mcp remove gemini-bridge -s user
+python3 -m pip uninstall gemini-bridge
+```
+
+Your `~/.config/gemini-bridge/config.json` is kept. Then follow the Quick start above — `/sidekick:setup`
+reads that same file and offers its values as defaults.
+
+Restart Claude Code after installing. On next start you'll see startup entries in the log:
 
 ```
 [gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
@@ -140,7 +137,7 @@ To check it from Claude, ask *"what can gemini-bridge do?"*. The answer should n
 
 ## Configuration
 
-**Config file:** `~/.config/gemini-bridge/config.json` — created by `setup.sh`, safe to edit by hand.
+**Config file:** `~/.config/gemini-bridge/config.json` — created by `/sidekick:setup`, safe to edit by hand.
 
 | Field | Default | Description |
 |---|---|---|
@@ -148,7 +145,7 @@ To check it from Claude, ask *"what can gemini-bridge do?"*. The answer should n
 | `location` | `global` | Vertex AI location; `global` is recommended and works for all models; omit for `api_key` |
 | `default_thinking` | `medium` | Thinking level when omitted per call |
 | `default_model` | *(newest Flash)* | Model for calls that omit `model=`: an alias (`flash` / `flash-lite` / `pro`) or a concrete id. Unset → newest Flash, resolved at startup. Per-call `model=` always overrides |
-| `transcript_dir` | `./session-summaries` | Transcript directory; relative paths resolve to the project root where Claude Code was launched |
+| `transcript_dir` | `./session-summaries` | Transcript directory; relative paths resolve to the project root (`CLAUDE_PROJECT_DIR`, falling back to the working directory) |
 | `artifacts_dir` | `./gemini-artifacts` | Where architect/review (and opted-in brainstorm) answers are saved; must be inside the project root |
 | `file_tools.enabled` | `true` | Kill switch for Gemini's repository access |
 | `file_tools.deny` | secrets list | Paths Gemini may never read or write (replaces the default list when set) |
@@ -195,7 +192,7 @@ code or config change.
 
 ## Auth methods
 
-Four methods supported — `setup.sh` walks you through all of them.
+Four methods supported — `/sidekick:setup` walks you through all of them.
 
 **ADC (recommended for personal machines):**
 ```bash
@@ -219,18 +216,19 @@ security add-generic-password \
 rm /path/to/sa-key.json   # remove disk copy
 # Sets method: "keychain" in config
 ```
-SA JSON loaded to memory at startup; zero disk artifact after store. `setup.sh` verifies the item exists and contains valid JSON before writing config.
+SA JSON loaded to memory at startup; zero disk artifact after store. `/sidekick:setup` verifies the item exists and contains valid JSON before writing config.
 
 **API key (Google AI Studio — no GCP project needed):**
 ```bash
-# setup.sh sets method: "api_key" in config. Then register the server, passing
-# the key with -e so it reaches the MCP subprocess (a bare shell export does
-# NOT reliably propagate to it). Keep the quotes — keys can contain shell-
-# special characters — and put the server name 'gemini-bridge' first.
+# The plugin's MCP server inherits Claude Code's own environment directly — no
+# registration flag injects it. Export the key in the shell PROFILE of the shell
+# that starts Claude Code (e.g. ~/.zshrc or ~/.bashrc), not just the current shell,
+# then run /sidekick:setup and choose api_key. Claude Code launched from a
+# GUI/desktop app may not see shell-profile exports — launch it from a terminal
+# instead if the key isn't found.
 export GEMINI_API_KEY="your-key-here"
-claude mcp add gemini-bridge -s user -e GEMINI_API_KEY="$GEMINI_API_KEY" -- python3 -m gemini_bridge
 ```
-Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). No GCP project, no `gcloud` setup. Lower quota limits than Vertex AI — suitable for personal use and quick setup. The key is injected into the server's environment via `-e` and stored in Claude Code's MCP config; it is never written to gemini-bridge's `config.json`.
+Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). No GCP project, no `gcloud` setup. Lower quota limits than Vertex AI — suitable for personal use and quick setup. The key is read from the server's inherited environment at startup; it is never written to gemini-bridge's `config.json`.
 
 **Minimum GCP role for service account:** `roles/aiplatform.user` (renamed from "Vertex AI Platform User" to "Agent Platform User" in 2026 — same role ID `roles/aiplatform.user`). Not required for `api_key` mode.
 
