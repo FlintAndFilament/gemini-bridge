@@ -15,51 +15,34 @@ python3 -m venv .venv
 The `dev` extra installs pytest, pytest-asyncio, ruff, mypy, bandit and types-regex.
 Python 3.11 or newer is required.
 
-### The live server uses system Python, not `.venv`
-
-The MCP server that Claude Code runs is an editable install in the system Python 3.13
-(`/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` on this machine). It is
-registered as the `gemini-bridge` console script. Editable means code changes take effect on
-the next Claude Code restart, but **new dependencies do not**: when you add one to
-`pyproject.toml`, install it there too:
-
-```bash
-python3 -m pip install -e .
-```
-
-Otherwise the tests pass in `.venv` and the live server fails at import.
-
 ## Running tests
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
-611 tests across 15 modules in `tests/`. All mocked: no network calls, runs in about
+667 tests across 19 modules in `tests/`. All mocked: no network calls, runs in about
 2 seconds.
 
-## Running the server locally
+## Running the plugin locally
 
 ```bash
-# Configure first
-bash setup.sh
-
-# Start the server (MCP stdio transport — reads protocol from stdin)
-python3 -m gemini_bridge
+claude --plugin-dir .
 ```
 
-To register with Claude Code and use tools interactively:
-```bash
-claude mcp add -s user gemini-bridge -- python3 -m gemini_bridge
-claude mcp list
-```
+Runs the plugin straight from this checkout — no marketplace, no install step. `uv` builds the
+plugin's own venv at `${CLAUDE_PLUGIN_DATA}/venv` on first launch and reuses it after. Inside
+that session, run `/sidekick:setup` to write `~/.config/gemini-bridge/config.json`, then call
+any `gemini_*` tool (or `gemini_help`) to confirm the `gemini` MCP server connected.
 
-Note the `--` separator — without it, `-m` is parsed as a `claude` option. With
-`api_key` auth, pass the key's environment variable too (`-e GEMINI_API_KEY="$GEMINI_API_KEY"`);
-`setup.sh` prints the exact command at the end.
+Whenever you add or change a dependency in `pyproject.toml`, run `uv lock`. `uv.lock` is
+committed and the server launches with `uv run --frozen`, which refuses to resolve a stale
+lock file — a dependency added to `pyproject.toml` without a matching `uv lock` is never
+installed for the live server, even though `.venv` (installed separately, above) picks it up
+fine for tests.
 
-Launch Claude Code from the repository you want Gemini to read: the sandbox root is the
-directory the server starts in. File tools switch off when that directory is your home
+The sandbox root is the project root: `CLAUDE_PROJECT_DIR` when Claude Code sets it, otherwise
+the server's working directory (#102). File tools switch off when that directory is your home
 directory, `/`, or an ancestor of home.
 
 After a restart, check the tool list with `gemini_help` or `gemini_list_models`. A resumed

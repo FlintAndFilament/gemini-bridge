@@ -160,7 +160,7 @@ search — which is why the default is off.
 **If web access is on for a call, `write_file` is not offered to Gemini at all.**
 
 A web page is attacker-controlled text. Once it is in the context of a call that can write to
-your repository, *"write this to `setup.sh`"* is a plausible instruction for the model to
+your repository, *"write this to `deploy.sh`"* is a plausible instruction for the model to
 follow. The deny-list blocks `.git`, `.env` and key files, but a CI workflow, a test file or a
 shell script inside the repo are all writable and all consequential.
 
