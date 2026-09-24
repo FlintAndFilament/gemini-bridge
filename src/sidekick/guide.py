@@ -36,7 +36,12 @@ from sidekick.file_tools import (
     READ_TOOL_NAMES,
 )
 from sidekick.sandbox import DEFAULT_DENY, WALK_SKIP_DIRS
-from sidekick.tools import CAPABILITIES, HELP_TOOL_NAME, LIST_MODELS_TOOL_NAME
+from sidekick.tools import (
+    CAPABILITIES,
+    HELP_TOOL_NAME,
+    LIST_MODELS_TOOL_NAME,
+    LIST_SESSIONS_TOOL_NAME,
+)
 from sidekick.tools.base import capability_hint, session_param_hint
 from sidekick.transcript import TranscriptWriter
 from sidekick.web_tools import WEB_TOOL_NAMES
@@ -165,6 +170,7 @@ def server_instructions(
     tools = ["Tools:"]
     tools += [f"- {c.name}: {_brief(c.summary)}" for c in CAPABILITIES]
     tools.append(f"- {LIST_MODELS_TOOL_NAME}: models on this backend, for model=.")
+    tools.append(f"- {LIST_SESSIONS_TOOL_NAME}: conversations in memory, to continue one.")
     tools.append(f"- {HELP_TOOL_NAME}: full detail on demand.")
     return "\n\n".join(
         [
@@ -283,8 +289,10 @@ def _web_topic(workspace: Optional[Workspace], default: bool, supported: bool) -
 
 def _sessions_topic(workspace: Optional[Workspace]) -> str:
     """The session_name contract, from the same text the parameter itself advertises."""
-    return "Sessions (session_name): " + session_param_hint(
-        workspace, write=_writes_possible(workspace)
+    return (
+        "Sessions (session_name): "
+        + session_param_hint(workspace, write=_writes_possible(workspace))
+        + f" {LIST_SESSIONS_TOOL_NAME} shows the live ones."
     )
 
 
@@ -296,7 +304,8 @@ def _disk_topic(transcript_path: str, workspace: Optional[Workspace]) -> str:
         "What this server writes to disk, whatever the repository-access setting says:",
         "",
         f"- Every call to {generating} appends the exchange to the session transcript at "
-        f"{transcript_path}. {LIST_MODELS_TOOL_NAME} and {HELP_TOOL_NAME} write nothing.",
+        f"{transcript_path}. {LIST_MODELS_TOOL_NAME}, {LIST_SESSIONS_TOOL_NAME} and "
+        f"{HELP_TOOL_NAME} write nothing.",
     ]
     by_default = _sentence([c.name for c in CAPABILITIES if c.artifacts == "default"])
     opt_in = _sentence([c.name for c in CAPABILITIES if c.artifacts == "opt-in"])
@@ -328,6 +337,10 @@ def _tools_topic() -> str:
     lines.append(
         f"- {LIST_MODELS_TOOL_NAME}: list the models this backend offers, for the model= "
         "parameter. Aliases flash, flash-lite and pro always track the newest release."
+    )
+    lines.append(
+        f"- {LIST_SESSIONS_TOOL_NAME}: the conversations held in memory (tool, session_name, "
+        "model, turns), to find one to continue after a gap or a context compaction."
     )
     lines.append(f"- {HELP_TOOL_NAME}: this guide.")
     return "\n".join(lines)

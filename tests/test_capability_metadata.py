@@ -404,7 +404,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
     def test_list_models_is_excluded_and_declared_silent(self, tmp_path: Path) -> None:
         """It takes a TranscriptWriter for signature parity but never writes one."""
         text = _full(_workspace(tmp_path))
-        assert "list_models and help write nothing" in text
+        assert "list_models, list_sessions and help write nothing" in text
 
     def test_no_artifact_promise_without_a_workspace(self) -> None:
         """call_gemini gates artifact saving on workspace is not None, so with no workspace

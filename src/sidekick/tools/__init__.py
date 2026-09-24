@@ -12,7 +12,7 @@ Design notes:
 
 Used by:  server.py (registers all tools)
 Imports:  tools/ask.py, tools/brainstorm.py, tools/review.py, tools/debug.py, tools/architect.py,
-          tools/list_models.py, tools/help.py
+          tools/list_models.py, tools/list_sessions.py, tools/help.py
 """
 
 from sidekick.tools.architect import CAPABILITY as CAPABILITY_ARCHITECT
@@ -28,6 +28,8 @@ from sidekick.tools.help import HELP_TOOL_NAME
 from sidekick.tools.help import register as register_help
 from sidekick.tools.list_models import LIST_MODELS_TOOL_NAME
 from sidekick.tools.list_models import register as register_list_models
+from sidekick.tools.list_sessions import LIST_SESSIONS_TOOL_NAME
+from sidekick.tools.list_sessions import register as register_list_sessions
 from sidekick.tools.review import CAPABILITY as CAPABILITY_REVIEW
 from sidekick.tools.review import register as register_review
 
@@ -47,8 +49,10 @@ __all__ = [
     "register_debug",
     "register_architect",
     "register_list_models",
+    "register_list_sessions",
     "register_help",
     "CAPABILITIES",
     "LIST_MODELS_TOOL_NAME",
+    "LIST_SESSIONS_TOOL_NAME",
     "HELP_TOOL_NAME",
 ]
