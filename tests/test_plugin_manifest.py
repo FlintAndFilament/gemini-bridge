@@ -22,7 +22,7 @@ def test_marketplace_ships_main_never_develop() -> None:
     assert entry["name"] == "sidekick"
     assert entry["source"] == {
         "source": "github",
-        "repo": "FlintAndFilament/gemini-bridge",
+        "repo": "FlintAndFilament/sidekick",
         "ref": "main",
     }
 

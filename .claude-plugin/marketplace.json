@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "sidekick",
-      "source": { "source": "github", "repo": "FlintAndFilament/gemini-bridge", "ref": "main" },
+      "source": { "source": "github", "repo": "FlintAndFilament/sidekick", "ref": "main" },
       "description": "A second opinion from Google Gemini inside Claude Code."
     }
   ]
