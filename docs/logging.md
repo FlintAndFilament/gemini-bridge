@@ -1,6 +1,6 @@
 # Logging
 
-gemini-bridge writes structured logs to a daily file. Claude Code swallows MCP server
+sidekick's MCP server (gemini-bridge) writes structured logs to a daily file. Claude Code swallows MCP server
 stderr — the file is the only way to see what the server is doing.
 
 ## Log file location
