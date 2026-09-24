@@ -38,3 +38,12 @@ def test_server_launches_frozen_with_the_venv_in_plugin_data() -> None:
 
 def test_lockfile_is_committed() -> None:
     assert (ROOT / "uv.lock").is_file()
+
+
+def test_setup_command_drives_the_cli_and_never_asks_for_the_key() -> None:
+    text = (ROOT / "commands" / "setup.md").read_text()
+    assert "gemini-bridge-setup status" in text
+    assert "gemini-bridge-setup write" in text
+    assert "AskUserQuestion" in text
+    assert "UV_PROJECT_ENVIRONMENT" in text  # same venv as the server, not a second one
+    assert "never ask for the key" in text.lower()
