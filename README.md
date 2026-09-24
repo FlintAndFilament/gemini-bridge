@@ -1,4 +1,4 @@
-<h1 align="center">gemini-bridge</h1>
+<h1 align="center">sidekick</h1>
 <h4 align="center">Gemini as a live second opinion for Claude Code — reads your repo, searches the web with real sources, keeps sessions and transcripts.</h4>
 
 <p align="center">
@@ -9,11 +9,13 @@
   <img alt="Tests" src="https://img.shields.io/badge/tests-667%20passing-brightgreen.svg">
 </p>
 
-gemini-bridge is an MCP server that gives Claude Code a live Gemini counterpart. When Claude is working on a hard problem — an architectural decision, a tricky bug, a code review — it can consult Gemini as a second opinion without switching tools or context.
+sidekick is a Claude Code plugin that gives Claude a live Gemini counterpart. When Claude is working on a hard problem — an architectural decision, a tricky bug, a code review — it can consult Gemini as a second opinion without switching tools or context.
 
 Gemini isn't limited to what Claude pastes into the call. It reads the repository itself, inside a sandbox. It can search the web, and each web answer comes back with the sources it actually used. Conversations persist across calls, every exchange lands in a Markdown transcript, and the server logs to a daily file you can tail.
 
 Five focused tools, each with its own persona, plus two utilities. Not a 37-tool Swiss Army knife.
+
+The plugin is called sidekick; the MCP server inside it keeps its original name, gemini-bridge. That name still appears in the config folder (`~/.config/gemini-bridge/`), log and transcript file names, and the `[gemini-bridge]` notices in replies.
 
 **Quick navigation:** [What it does](#what-it-does) | [How it works](#how-it-works) | [Prerequisites](#prerequisites) | [Quick start](#quick-start) | [Configuration](#configuration) | [Choosing a model](#choosing-a-model) | [Auth methods](#auth-methods) | [Thinking levels](#thinking-levels) | [Roadmap](#roadmap) | [Full documentation](#full-documentation)
 
@@ -62,7 +64,7 @@ See [docs/tools.md](docs/tools.md#web-access).
 ```mermaid
 sequenceDiagram
     participant CC as Claude Code
-    participant S as gemini-bridge (MCP server)
+    participant S as sidekick (gemini-bridge MCP server)
     participant G as Gemini API<br/>(Developer API or Vertex AI)
     participant R as Google redirect
 
@@ -137,7 +139,7 @@ Restart Claude Code after installing. On next start you'll see startup entries i
 [gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: file tools enabled — sandbox root ~/dev/my-project — artifacts → ~/dev/my-project/gemini-artifacts
 ```
 
-To check it from Claude, ask *"what can gemini-bridge do?"*. The answer should name all seven tools and the web rules without reading any code.
+To check it from Claude, ask *"what can sidekick do?"*. The answer should name all seven tools and the web rules without reading any code.
 
 ---
 

@@ -1,4 +1,4 @@
-# gemini-bridge Documentation
+# sidekick Documentation
 
 | Document | Contents |
 |---|---|
