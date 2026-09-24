@@ -17,6 +17,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff", "mypy", "bandit", "types-reg
 
 [project.scripts]
 gemini-bridge = "gemini_bridge.__main__:main"
+gemini-bridge-setup = "gemini_bridge.setup_cli:main"
 
 [build-system]
 requires = ["hatchling"]
