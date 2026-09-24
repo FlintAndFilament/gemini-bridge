@@ -105,17 +105,17 @@ starts every session fresh even though the old transcript is still on disk.
 
 ## Transcript directory
 
-**Default:** `./session-summaries` — resolved relative to the directory Claude Code was
-launched in (the server's working directory). `~` is expanded.
+**Default:** `./session-summaries` — resolved relative to the project root: `CLAUDE_PROJECT_DIR`
+when Claude Code sets it, otherwise the server's working directory (#102). `~` is expanded.
 
 Configured in `transcript_dir` in `~/.config/gemini-bridge/config.json`.
 
 The directory, including any missing parents, is created at startup if it doesn't exist. The
 startup log names the full transcript path — see [logging.md](logging.md).
 
-**Per-project routing is automatic.** Launch Claude Code from `~/dev/my-project` and
-transcripts land in `~/dev/my-project/session-summaries/`. No config change needed when
-switching projects — the server inherits the working directory from Claude Code.
+**Per-project routing is automatic.** Open Claude Code on `~/dev/my-project` and transcripts
+land in `~/dev/my-project/session-summaries/`. No config change needed when switching
+projects — the server reads `CLAUDE_PROJECT_DIR` from Claude Code.
 
 ## Changing the transcript directory
 

@@ -118,3 +118,21 @@ def test_unresolvable_home_is_an_actionable_error_too() -> None:
     message = str(exc.value)
     assert "transcript_dir" in message
     assert "~nosuchuser12345/transcripts" in message
+
+
+class TestTranscriptBase:
+    def test_relative_dir_resolves_against_base(self, tmp_path: Path) -> None:
+        w = TranscriptWriter("./session-summaries", datetime.now(), base=tmp_path)
+        assert w.path.parent == (tmp_path / "session-summaries").resolve()
+
+    def test_absolute_dir_ignores_base(self, tmp_path: Path) -> None:
+        target = tmp_path / "abs"
+        w = TranscriptWriter(str(target), datetime.now(), base=tmp_path / "elsewhere")
+        assert w.path.parent == target.resolve()
+
+    def test_no_base_keeps_cwd_behaviour(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        w = TranscriptWriter("rel", datetime.now())
+        assert w.path.parent == (tmp_path / "rel").resolve()

@@ -131,6 +131,22 @@ Web answers end with a sources list taken from the grounding metadata (#80). The
 Google's grounding redirect links to the real URLs, and Gemini is told not to type URLs itself, so
 every listed URL comes from the metadata (#82). Resolving costs no Gemini tokens.
 
+### Sidekick plugin (#102)
+
+Repackaged as a Claude Code plugin, `sidekick`, installed with `/plugin marketplace add` +
+`/plugin install` instead of a manual clone and `claude mcp add`. `setup.sh` is gone;
+`/sidekick:setup` (a slash command) drives a new `gemini-bridge-setup status|write` CLI that
+never parses free text as shell, JSON or Python. The server launches with
+`uv run --frozen --project ${CLAUDE_PLUGIN_ROOT} gemini-bridge`, using a venv at
+`${CLAUDE_PLUGIN_DATA}/venv` that `uv` builds once and reuses across restarts and version
+bumps. Project-relative paths (`transcript_dir`, `artifacts_dir`, the file-tools sandbox root)
+now anchor to `CLAUDE_PROJECT_DIR`, falling back to the working directory when Claude Code
+doesn't set it. Tools now appear to Claude as `mcp__plugin_sidekick_gemini__gemini_*`.
+
+#38 (ask for `-s user` / `project` / `local` scope in `setup.sh`) was closed as not planned,
+superseded by #102 — `/plugin install` chooses the install scope itself, so there is no
+`setup.sh` scope prompt left to build.
+
 ---
 
 ## Open
@@ -150,15 +166,10 @@ name already gives a fresh conversation, before closing or narrowing the issue.
 
 `gemini_set_transcript_dir(path)` tool — redirect the transcript file without editing config.json.
 
-The default `transcript_dir` is already project-local (`./session-summaries`, relative to where
-Claude Code was launched), so this now matters mainly when `transcript_dir` is set to an absolute
+The default `transcript_dir` is already project-local (`./session-summaries`, relative to the
+project root — #102), so this now matters mainly when `transcript_dir` is set to an absolute
 path, or to switch directories mid-session. Changing it today means editing
 `~/.config/gemini-bridge/config.json` and restarting the MCP server.
-
-### Registration scope prompt in setup.sh (#38)
-
-`setup.sh` always prints `-s user`. It should ask for `user`, `project` or `local` scope and print
-the matching `claude mcp add` command.
 
 ---
 

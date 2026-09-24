@@ -2,13 +2,13 @@
 
 **Config file location:** `~/.config/gemini-bridge/config.json`
 
-Created by `bash setup.sh`. Safe to edit by hand. The server reads it once at startup, so restart
+Created by `/sidekick:setup`. Safe to edit by hand. The server reads it once at startup, so restart
 the MCP server (or Claude Code) after an edit.
 
-`setup.sh` writes only `project`, `location`, `default_thinking`, `default_model` (when you give
-one), `transcript_dir` and `auth`. Every other field below is optional and takes its default until
-you add it by hand. **Re-running `setup.sh` updates only those fields and leaves the rest of the
-file alone** (#85), so an `artifacts_dir`, `file_tools` or `web_tools` you added by hand survives.
+`/sidekick:setup` writes only `project`, `location`, `default_thinking`, `default_model` (when you
+give one), `transcript_dir` and `auth`. Every other field below is optional and takes its default
+until you add it by hand. **Re-running `/sidekick:setup` updates only those fields and leaves the
+rest of the file alone** (#85), so an `artifacts_dir`, `file_tools` or `web_tools` you added by hand survives.
 A saved `default_model` is kept when you accept the prompt's default; enter `-` to clear it. If
 the file is not valid JSON, the wizard moves it aside to `config.json.<timestamp>.bak` — one copy
 per broken run, never overwritten (#96) — and starts fresh rather than merging into it. The merged
@@ -110,7 +110,7 @@ it judges a different level is appropriate.
 
 ### `transcript_dir`
 
-**Type:** string (path, `~` and `.` expanded relative to Claude Code's working directory)
+**Type:** string (path, `~` and `.` expanded relative to the project root)
 **Default:** `"./session-summaries"`
 
 Directory where transcript files are written. Created if it doesn't exist; if it can't be
@@ -118,16 +118,17 @@ created (read-only parent, permission denied) the server stops at startup with
 `Transcript directory cannot be created: …` instead of a traceback (#87). Transcript files
 are named `YYYYMMDD-HHMM-gemini-bridge-transcript.md` using the server startup time.
 
-The default `./session-summaries` resolves relative to the project root where Claude Code
-was launched — transcripts land in `your-project/session-summaries/` automatically, one
-directory per project. Override with an absolute path (e.g. `"~/gemini-transcripts"`) to
-collect transcripts globally instead.
+The project root is `CLAUDE_PROJECT_DIR` when Claude Code sets it, otherwise the server's
+working directory (#102). The default `./session-summaries` resolves relative to that root —
+transcripts land in `your-project/session-summaries/` automatically, one directory per project.
+Override with an absolute path (e.g. `"~/gemini-transcripts"`) to collect transcripts globally
+instead.
 
 ---
 
 ### `artifacts_dir`
 
-**Type:** string (path, relative to Claude Code's working directory)
+**Type:** string (path, relative to the project root — see `transcript_dir` above)
 **Default:** `"./gemini-artifacts"`
 
 Where `gemini_architect` and `gemini_review` (and `gemini_brainstorm` with `write_artifact=true`)

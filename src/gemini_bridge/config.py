@@ -106,7 +106,7 @@ class Config(BaseModel):
 def load_config(path: Path = CONFIG_PATH) -> Config:
     """Load and validate config from path. Raises ConfigError on any failure."""
     if not path.exists():
-        raise ConfigError(f"Config file not found: {path}\nRun 'bash setup.sh' to create it.")
+        raise ConfigError(f"Config file not found: {path}\nRun /sidekick:setup in Claude Code.")
     try:
         raw = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
