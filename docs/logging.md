@@ -48,7 +48,7 @@ also means `INFO`.
 [sidekick] 23:28:31 INFO     sidekick.__main__: starting — auth=api_key default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
 [sidekick] 23:28:31 INFO     sidekick.__main__: latest models: flash=gemini-3.8-flash, pro=gemini-3.1-pro-preview, flash-lite=gemini-3.5-flash-lite
 [sidekick] 23:28:31 INFO     sidekick.__main__: transcript → /Users/you/dev/my-project/session-summaries/20260921-2328-sidekick-transcript.md
-[sidekick] 23:28:31 INFO     sidekick.__main__: file tools enabled — sandbox root /Users/you/dev/my-project — artifacts → /Users/you/dev/my-project/gemini-artifacts
+[sidekick] 23:28:31 INFO     sidekick.__main__: file tools enabled — sandbox root /Users/you/dev/my-project — artifacts → /Users/you/dev/my-project/sidekick-artifacts
 ```
 
 On a Vertex backend the first line reads `auth=<method> location=<location>` instead (e.g.
@@ -64,10 +64,10 @@ On a Vertex backend the first line reads `auth=<method> location=<location>` ins
 
 **Debug mode (DEBUG):**
 ```
-[sidekick] 17:50:15 DEBUG    sidekick.tools.base: gemini_brainstorm session='default' model=default thinking=medium
+[sidekick] 17:50:15 DEBUG    sidekick.tools.base: brainstorm session='default' model=default thinking=medium
 [sidekick] 17:50:15 DEBUG    sidekick.client: ask: model=gemini-3.8-flash thinking=medium prompt_len=142 tools=5 web=False
 [sidekick] 17:50:19 DEBUG    sidekick.client: response_len=847
-[sidekick] 17:50:19 DEBUG    sidekick.tools.base: gemini_brainstorm session='default' OK
+[sidekick] 17:50:19 DEBUG    sidekick.tools.base: brainstorm session='default' OK
 ```
 
 `model=default` on the first line means the call omitted `model`; the `ask:` line shows the

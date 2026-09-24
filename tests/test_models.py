@@ -67,7 +67,7 @@ class TestSchemaHint:
         hint = models.schema_hint(models.DEVELOPER_API, "gemini-3.5-flash")
         assert "gemini-flash-latest" in hint
         assert "gemini-3.5-flash" in hint  # named as the server default
-        assert "gemini_list_models" in hint
+        assert "list_models" in hint
 
     def test_vertex_hint_omits_latest_aliases(self) -> None:
         hint = models.schema_hint(models.VERTEX, "gemini-3.5-flash")

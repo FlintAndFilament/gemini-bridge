@@ -6,7 +6,7 @@ What has shipped, what is open, and what is parked. Rebuilt from git history and
 The `26.7.x` labels are the names the July releases went out under. Work after 26.7.4 is grouped
 by feature and issue number instead of by version.
 
-The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: `mv ~/.config/gemini-bridge ~/.config/sidekick`.
+The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: **before** `/plugin update sidekick`, run `mv ~/.config/gemini-bridge ~/.config/sidekick`, then update and restart. (After the update, the new server has already created `~/.config/sidekick/`, and `mv` nests the old folder inside it.)
 
 ---
 
@@ -17,7 +17,7 @@ The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older
 **5 tools, ADC + env + Keychain auth, persistent sessions, transcript logging, structured logging,
 full docs.**
 
-- `gemini_ask`, `gemini_brainstorm`, `gemini_review`, `gemini_debug`, `gemini_architect`
+- `ask`, `brainstorm`, `review`, `debug`, `architect`
 - ADC (Application Default Credentials) — one-time setup, SDK auto-refreshes
 - Env-file service account auth (`GOOGLE_APPLICATION_CREDENTIALS`, #14)
 - Apple Keychain service account auth, macOS only (#16): the SA JSON is read into memory at
@@ -63,9 +63,9 @@ credential management beyond one-time setup.
 ### Model discoverability and defaults (#55, #56, #58, #59, #60, #64)
 
 - Each tool's `model` parameter description lists the models valid for the active backend, and
-  `gemini_list_models` returns the live, chat-only catalog, falling back to a curated shortlist
+  `list_models` returns the live, chat-only catalog, falling back to a curated shortlist
   when the live list can't be read (#56). Single source of truth in `models.py`.
-- `gemini_list_models` lists only models the bridge can run and accepts Gemini 3 previews (#60);
+- `list_models` lists only models the bridge can run and accepts Gemini 3 previews (#60);
   it works on Vertex AI, which reports no `supported_actions` (#64).
 - Tool parameter descriptions reach Claude (they were silently dropped before) (#55).
 - `default_model` config field (#59).
@@ -81,9 +81,9 @@ name, `claude mcp add` registered the server as `python3` and it failed to conne
 
 Gemini reads the repository itself with `list_dir`, `glob`, `grep` and `read_file`, sandboxed to
 the directory Claude Code was launched in, with a deny-list for `.git`, `.env*`, keys and
-credentials. `gemini_brainstorm`, `gemini_review` and `gemini_architect` can also `write_file`
+credentials. `brainstorm`, `review` and `architect` can also `write_file`
 (capped by `file_tools.max_write_bytes`). The bridge runs its own tool loop and saves
-`gemini_architect` / `gemini_review` answers (and opted-in `gemini_brainstorm` answers) as
+`architect` / `review` answers (and opted-in `brainstorm` answers) as
 artifacts in `artifacts_dir`. `file_tools.enabled=false` turns it off; it also turns itself off
 when launched from the home directory or filesystem root. See
 [tools.md](tools.md#repository-access).
@@ -125,7 +125,7 @@ superseded by #76.
   the server instructions explain when to use web access and sessions, and every tool shares one
   accurate `session_name` description (#77).
 - Server instructions cut to fit under Claude Code's ~2048-character cap; the full guide moved to
-  a new `gemini_help` tool (#78). The server now registers 7 tools.
+  a new `help` tool (#78). The server now registers 7 tools.
 
 ### Web sources (#80, #82)
 
@@ -143,7 +143,7 @@ never parses free text as shell, JSON or Python. The server launches with
 `${CLAUDE_PLUGIN_DATA}/venv` that `uv` builds once and reuses across restarts and version
 bumps. Project-relative paths (`transcript_dir`, `artifacts_dir`, the file-tools sandbox root)
 now anchor to `CLAUDE_PROJECT_DIR`, falling back to the working directory when Claude Code
-doesn't set it. Tools now appear to Claude as `mcp__plugin_sidekick_gemini__gemini_*`.
+doesn't set it. Tools now appear to Claude as `mcp__plugin_sidekick_mcp__*`.
 
 #38 (ask for `-s user` / `project` / `local` scope in `setup.sh`) was closed as not planned,
 superseded by #102 — `/plugin install` chooses the install scope itself, so there is no

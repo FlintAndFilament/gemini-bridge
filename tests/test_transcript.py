@@ -28,7 +28,7 @@ def test_append_writes_content() -> None:
         writer = TranscriptWriter(tmp, datetime.now())
         ts = datetime(2026, 7, 2, 14, 32, 7)
         writer.append(
-            tool_name="gemini_ask",
+            tool_name="ask",
             prompt="What is the capital of France?",
             response="Paris.",
             thinking="low",
@@ -36,7 +36,7 @@ def test_append_writes_content() -> None:
             timestamp=ts,
         )
         content = writer.path.read_text()
-    assert "[14:32:07] gemini_ask" in content
+    assert "[14:32:07] ask" in content
     assert "thinking: low | session: default" in content
     assert "What is the capital of France?" in content
     assert "Paris." in content
@@ -47,19 +47,19 @@ def test_append_multiple_exchanges() -> None:
         writer = TranscriptWriter(tmp, datetime.now())
         for i in range(3):
             writer.append(
-                tool_name="gemini_brainstorm",
+                tool_name="brainstorm",
                 prompt=f"prompt {i}",
                 response=f"response {i}",
                 thinking="medium",
             )
         content = writer.path.read_text()
-    assert content.count("gemini_brainstorm") == 3
+    assert content.count("brainstorm") == 3
 
 
 def test_format_exchange_contains_all_fields() -> None:
     ts = datetime(2026, 7, 2, 9, 0, 1)
-    result = _format_exchange("gemini_review", "my prompt", "my response", "high", "work", ts)
-    assert "[09:00:01] gemini_review" in result
+    result = _format_exchange("review", "my prompt", "my response", "high", "work", ts)
+    assert "[09:00:01] review" in result
     assert "thinking: high | session: work" in result
     assert "my prompt" in result
     assert "my response" in result
@@ -70,7 +70,7 @@ def test_append_survives_bad_path(capsys: object) -> None:
     writer = TranscriptWriter.__new__(TranscriptWriter)
     writer._path = Path("/nonexistent/really/bad/path/transcript.md")
     writer.append(
-        tool_name="gemini_ask",
+        tool_name="ask",
         prompt="p",
         response="r",
         thinking="none",
@@ -81,7 +81,7 @@ def test_append_survives_bad_path(capsys: object) -> None:
 def test_append_renders_tool_calls(tmp_path: Path) -> None:
     writer = TranscriptWriter(str(tmp_path), datetime.now())
     writer.append(
-        tool_name="gemini_review",
+        tool_name="review",
         prompt="p",
         response="r",
         thinking="low",
@@ -93,7 +93,7 @@ def test_append_renders_tool_calls(tmp_path: Path) -> None:
 
 def test_append_without_tool_calls_has_no_section(tmp_path: Path) -> None:
     writer = TranscriptWriter(str(tmp_path), datetime.now())
-    writer.append(tool_name="gemini_ask", prompt="p", response="r", thinking="low")
+    writer.append(tool_name="ask", prompt="p", response="r", thinking="low")
     assert "Tool calls" not in writer.path.read_text()
 
 

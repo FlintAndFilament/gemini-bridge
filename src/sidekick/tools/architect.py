@@ -1,10 +1,10 @@
 """
 sidekick/tools/architect.py
 ---------------------------------
-MCP tool: gemini_architect — system design and tradeoff analysis.
+MCP tool: architect — system design and tradeoff analysis.
 
 Responsibilities:
-  - Register the gemini_architect MCP tool with the server
+  - Register the architect MCP tool with the server
   - Accept system description + optional focused question and thinking level
   - Return Gemini's opinionated architecture guidance with explicit tradeoffs
 
@@ -44,7 +44,7 @@ _SYSTEM_PROMPT = (
     "Name tradeoffs explicitly when the choice is genuinely context-dependent."
 )
 
-_TOOL_NAME = "gemini_architect"
+_TOOL_NAME = "architect"
 # Capability row (#68): read + write_file.
 _WRITE = True
 
@@ -71,7 +71,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_architect with the MCP server."""
+    """Register architect with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -85,7 +85,7 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_architect(
+    async def architect(
         description: Annotated[
             str, Field(description="The system design, architecture, or approach to evaluate")
         ],

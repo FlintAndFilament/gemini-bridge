@@ -20,13 +20,13 @@ graph TD
 
     SRV --> GUIDE["guide.py<br/>server_instructions() / help_text()"]
     SRV --> MCP["FastMCP + 7 registered tools"]
-    MCP --> T1["gemini_ask"]
-    MCP --> T2["gemini_brainstorm"]
-    MCP --> T3["gemini_review"]
-    MCP --> T4["gemini_debug"]
-    MCP --> T5["gemini_architect"]
-    MCP --> T6["gemini_list_models"]
-    MCP --> T7["gemini_help"]
+    MCP --> T1["ask"]
+    MCP --> T2["brainstorm"]
+    MCP --> T3["review"]
+    MCP --> T4["debug"]
+    MCP --> T5["architect"]
+    MCP --> T6["list_models"]
+    MCP --> T7["help"]
 
     T1 & T2 & T3 & T4 & T5 --> BASE["tools/base.py<br/>call_gemini()"]
     BASE --> CL
@@ -42,8 +42,8 @@ graph TD
 ```
 
 The five generating tools route through `call_gemini()` in `tools/base.py`.
-`gemini_list_models` calls the client directly and never writes a transcript.
-`gemini_help` never calls the backend: `server.py` hands it a callable that renders text
+`list_models` calls the client directly and never writes a transcript.
+`help` never calls the backend: `server.py` hands it a callable that renders text
 from `guide.py`.
 
 ## Module Map
@@ -67,7 +67,7 @@ Package root: `src/sidekick/`.
 | `web_tools.py` | `resolve_capabilities()`: decides web and write for a call, never both (#76). `web_tool_set()`: the `google_search` + `url_context` built-ins | none |
 | `sources.py` | Resolves Google grounding redirect links to real URLs with one HEAD request each (no redirect follow, 3 s timeout, in parallel); renders the sources footer (#80, #82) | tool_loop (`ToolCallRecord`) |
 | `transcript.py` | `TranscriptWriter`: appends each exchange as Markdown; write errors are logged, never raised | none |
-| `guide.py` | Text only: the short server instructions (kept under `INSTRUCTIONS_BUDGET` = 2000 characters) and the `gemini_help` topics, all derived from the live capability rows, deny-list, caps and web support (#74, #78) | tools, tools/base, file_tools, sandbox, web_tools, workspace, transcript |
+| `guide.py` | Text only: the short server instructions (kept under `INSTRUCTIONS_BUDGET` = 2000 characters) and the `help` topics, all derived from the live capability rows, deny-list, caps and web support (#74, #78) | tools, tools/base, file_tools, sandbox, web_tools, workspace, transcript |
 | `server.py` | Builds `FastMCP` with the guide's instructions and registers all 7 tools | client, guide, tools, transcript, workspace |
 
 Tools package: `src/sidekick/tools/`.
@@ -76,17 +76,17 @@ Tools package: `src/sidekick/tools/`.
 |---|---|---|
 | `tools/__init__.py` | Re-exports every `register_*` and collects the five `CAPABILITY` rows into `CAPABILITIES` | every tool module, tools/base |
 | `tools/base.py` | `ToolCapability`, `capability_hint()`, `tool_annotations()`, `session_param_hint()`, `model_param_hint()`, and `call_gemini()` | client, config, file_tools, sandbox, sources, tool_loop, transcript, web_tools, workspace, models |
-| `tools/ask.py` | `gemini_ask`: general question. Read-only, no artifacts | tools/base, client, config, transcript, workspace |
-| `tools/brainstorm.py` | `gemini_brainstorm`: divergent ideas. Read+write, artifacts opt-in | same as ask |
-| `tools/review.py` | `gemini_review`: critical review. Read+write, artifacts on by default | same as ask |
-| `tools/debug.py` | `gemini_debug`: root-cause hypotheses. Read-only, no artifacts | same as ask |
-| `tools/architect.py` | `gemini_architect`: design and tradeoffs. Read+write, artifacts on by default | same as ask |
-| `tools/list_models.py` | `gemini_list_models`: live, chat-capable catalog for the active backend; falls back to the static shortlist | client, models, tools/base, transcript (signature only) |
-| `tools/help.py` | `gemini_help`: returns one help topic or all of them from an injected render callable, so it never imports `guide.py` (#78) | none |
+| `tools/ask.py` | `ask`: general question. Read-only, no artifacts | tools/base, client, config, transcript, workspace |
+| `tools/brainstorm.py` | `brainstorm`: divergent ideas. Read+write, artifacts opt-in | same as ask |
+| `tools/review.py` | `review`: critical review. Read+write, artifacts on by default | same as ask |
+| `tools/debug.py` | `debug`: root-cause hypotheses. Read-only, no artifacts | same as ask |
+| `tools/architect.py` | `architect`: design and tradeoffs. Read+write, artifacts on by default | same as ask |
+| `tools/list_models.py` | `list_models`: live, chat-capable catalog for the active backend; falls back to the static shortlist | client, models, tools/base, transcript (signature only) |
+| `tools/help.py` | `help`: returns one help topic or all of them from an injected render callable, so it never imports `guide.py` (#78) | none |
 
 ## Data Flow (per generating tool call)
 
-1. Claude Code sends an MCP tool call (e.g. `gemini_review`) with optional `thinking`,
+1. Claude Code sends an MCP tool call (e.g. `review`) with optional `thinking`,
    `session_name`, `model`, `web`, and, on tools that save artifacts, `write_artifact`.
 2. The tool function in `tools/review.py` builds the prompt and calls `call_gemini()`.
 3. `call_gemini()` runs `resolve_capabilities()`: `web` is the call's argument, or
@@ -174,7 +174,7 @@ sequenceDiagram
 - **Persists:** for the lifetime of the MCP server process (one Claude Code session).
 - **Destroyed:** when Claude Code restarts (new server process, new sessions).
 
-Each tool has its own sessions (`gemini_ask:default`, `gemini_review:default`, ...), so a
+Each tool has its own sessions (`ask:default`, `review:default`, ...), so a
 tool's system prompt persona stays fixed within its sessions.
 
 ## Transcript Lifecycle

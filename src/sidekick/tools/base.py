@@ -108,7 +108,7 @@ _SEARCH_NOTE = (
     "everything else under the root is readable by path, though searches are not exhaustive: "
     "glob and grep skip dependency and cache directories, never follow symlinked directories, "
     "and cap their results, and read_file refuses binary files — so an empty result is not "
-    "proof of absence. gemini_help (topic files) gives the specifics"
+    "proof of absence. help (topic files) gives the specifics"
 )
 _NO_READ = (
     "Gemini cannot read any file, so include the code or context you want considered "
@@ -228,7 +228,7 @@ def tool_annotations(workspace: Optional[Workspace], *, write: bool) -> ToolAnno
 
 
 # The shared part of every generating tool's session_name description. Built in one place so
-# it cannot drift per tool again — gemini_ask's copy had said "v1: always 'default'" long
+# it cannot drift per tool again — ask's copy had said "v1: always 'default'" long
 # after session names started working.
 _SESSION_BASE = (
     "Named conversation to continue. Calls that share a name continue one Gemini conversation; "
@@ -245,7 +245,7 @@ def session_param_hint(workspace: Optional[Workspace], *, write: bool) -> str:
     """The session_name description for one tool.
 
     The advice to switch names before writing only applies where write_file can actually be
-    offered — a write-capable tool with file tools on. Giving it to gemini_ask, or with the
+    offered — a write-capable tool with file tools on. Giving it to ask, or with the
     kill switch on, would make Claude abandon a conversation it could have kept.
     """
     if write and workspace is not None and workspace.tools_enabled:

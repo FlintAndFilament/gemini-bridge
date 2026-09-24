@@ -1,10 +1,10 @@
 """
 sidekick/tools/help.py
 -----------------------------
-MCP tool: gemini_help — the full detail behind the short server instructions (#78).
+MCP tool: help — the full detail behind the short server instructions (#78).
 
 Responsibilities:
-  - Register the gemini_help MCP tool
+  - Register the help MCP tool
   - Return one help topic, or all of them, rendered by the injected callable
 
 Design notes:
@@ -26,7 +26,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-HELP_TOOL_NAME = "gemini_help"
+HELP_TOOL_NAME = "help"
 
 
 def register(
@@ -34,7 +34,7 @@ def register(
     render: Callable[[Optional[str]], str],
     topics: Sequence[str],
 ) -> None:
-    """Register gemini_help. `render(topic)` returns one topic, or every topic for None."""
+    """Register help. `render(topic)` returns one topic, or every topic for None."""
 
     @mcp.tool(
         name=HELP_TOOL_NAME,
@@ -51,7 +51,7 @@ def register(
             openWorldHint=False,
         ),
     )
-    def gemini_help(
+    def help(
         topic: Annotated[
             Optional[str],
             Field(description="One of: " + ", ".join(topics) + ". Omit for all topics."),

@@ -1,10 +1,10 @@
 """
 sidekick/tools/review.py
 ------------------------------
-MCP tool: gemini_review — critical code and design review.
+MCP tool: review — critical code and design review.
 
 Responsibilities:
-  - Register the gemini_review MCP tool with the server
+  - Register the review MCP tool with the server
   - Accept content (code/design/plan) + optional focused question and thinking level
   - Return Gemini's critical, severity-prioritized review
 
@@ -44,7 +44,7 @@ _SYSTEM_PROMPT = (
     "If something is sound, say so briefly and move on."
 )
 
-_TOOL_NAME = "gemini_review"
+_TOOL_NAME = "review"
 # Capability row (#68): read + write_file.
 _WRITE = True
 
@@ -71,7 +71,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_review with the MCP server."""
+    """Register review with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -85,7 +85,7 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_review(
+    async def review(
         content: Annotated[str, Field(description="The code, design, or plan to review")],
         question: Annotated[
             str,

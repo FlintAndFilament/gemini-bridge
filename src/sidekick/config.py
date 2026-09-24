@@ -87,8 +87,8 @@ class Config(BaseModel):
     # Omit to use the server's built-in default. Individual calls override via the model= param.
     default_model: Optional[str] = None
     transcript_dir: str = "./session-summaries"
-    # Where gemini_architect / gemini_review (and opted-in brainstorm) save their output.
-    artifacts_dir: str = "./gemini-artifacts"
+    # Where architect / review (and opted-in brainstorm) save their output.
+    artifacts_dir: str = "./sidekick-artifacts"
     file_tools: FileToolsConfig = FileToolsConfig()
     web_tools: WebToolsConfig = WebToolsConfig()
     auth: AuthConfig = AuthConfig()
