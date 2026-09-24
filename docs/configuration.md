@@ -26,7 +26,7 @@ silently, so check spelling if a setting seems to have no effect.
   "location": "global",
   "default_thinking": "medium",
   "transcript_dir": "./session-summaries",
-  "artifacts_dir": "./gemini-artifacts",
+  "artifacts_dir": "./sidekick-artifacts",
   "file_tools": {
     "enabled": true,
     "max_write_bytes": 262144
@@ -92,7 +92,7 @@ it via `model=`. The value is not checked when the config loads: a name that isn
 model (anything not shaped `gemini-<version>-…`, a `-latest` alias, or a bridge alias) fails every
 call that uses it with a `[sidekick error] Unrecognized model family` reply, and a well-formed
 id the backend doesn't serve fails with the API's 404. The backend-aware schema hint and
-`gemini_list_models` reflect the effective default. See
+`list_models` reflect the effective default. See
 [Choosing a model](#choosing-a-model).
 
 ---
@@ -121,7 +121,7 @@ are named `YYYYMMDD-HHMM-sidekick-transcript.md` using the server startup time.
 The project root is `CLAUDE_PROJECT_DIR` when Claude Code sets it, otherwise the server's
 working directory (#102). The default `./session-summaries` resolves relative to that root —
 transcripts land in `your-project/session-summaries/` automatically, one directory per project.
-Override with an absolute path (e.g. `"~/gemini-transcripts"`) to collect transcripts globally
+Override with an absolute path (e.g. `"~/sidekick-transcripts"`) to collect transcripts globally
 instead.
 
 ---
@@ -129,9 +129,9 @@ instead.
 ### `artifacts_dir`
 
 **Type:** string (path, relative to the project root — see `transcript_dir` above)
-**Default:** `"./gemini-artifacts"`
+**Default:** `"./sidekick-artifacts"`
 
-Where `gemini_architect` and `gemini_review` (and `gemini_brainstorm` with `write_artifact=true`)
+Where `architect` and `review` (and `brainstorm` with `write_artifact=true`)
 save their answers. Created on first save. It **must lie inside the project root and outside the
 deny-list** — the server refuses to start otherwise (the log shows
 `startup failed — artifacts_dir …`). This check runs even when `file_tools.enabled` is `false`,
@@ -159,7 +159,7 @@ even when Gemini does not search.
 
 **This setting changes what a write-capable call can do.** Web access and `write_file` are
 mutually exclusive (see [tools.md](tools.md#web-access)), so with `enabled: true`,
-`gemini_brainstorm`, `gemini_review` and `gemini_architect` lose `write_file` unless the call
+`brainstorm`, `review` and `architect` lose `write_file` unless the call
 passes `web=false`. Turning this on is therefore a change to your write workflow, not only to
 what Gemini can read.
 
@@ -285,7 +285,7 @@ Every tool accepts an optional `model=` parameter.
   warning is logged.
 - **Visibility:** the startup log line names `default_model` and `fallback_model` as concrete ids
   plus the resolved `flash=… flash-lite=… pro=…`; artifacts record the concrete model
-  (transcripts don't record it). `gemini_list_models` marks `(default)` and `(latest <family>)`.
+  (transcripts don't record it). `list_models` marks `(default)` and `(latest <family>)`.
 
 ### Thinking levels per model
 

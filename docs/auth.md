@@ -147,7 +147,7 @@ rm /path/to/sa-key.json   # remove disk copy immediately
 **Minimum SA role:** `roles/aiplatform.user` (Vertex AI User) on the project. It covers the
 `generateContent` calls and the model listing the bridge does at startup. It grants more than
 prediction, so if you need tighter scope, build a custom role and test it with
-`gemini_list_models` and one `gemini_ask` call.
+`list_models` and one `ask` call.
 
 The server reads the item with `security find-generic-password -s <service> -a <account> -w`.
 macOS returns a multi-line value (like SA JSON) as a hex string; the server detects and decodes

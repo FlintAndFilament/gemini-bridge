@@ -139,7 +139,7 @@ class TestRegistration:
         client._raw_client.models.list.return_value = [_meta("models/gemini-2.5-flash", "Flash")]
         mcp = FastMCP("t")
         lm.register(mcp, client, TranscriptWriter(str(tmp_path), datetime.now()))
-        tool = next(t for t in asyncio.run(mcp.list_tools()) if t.name == "gemini_list_models")
+        tool = next(t for t in asyncio.run(mcp.list_tools()) if t.name == "list_models")
         assert "refresh" in tool.inputSchema["properties"]
 
 

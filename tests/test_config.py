@@ -145,7 +145,7 @@ def test_file_tools_defaults() -> None:
     from sidekick.sandbox import DEFAULT_DENY
 
     cfg = Config(auth={"method": "api_key"})
-    assert cfg.artifacts_dir == "./gemini-artifacts"
+    assert cfg.artifacts_dir == "./sidekick-artifacts"
     assert cfg.file_tools.enabled is True
     assert cfg.file_tools.deny == list(DEFAULT_DENY)
     assert cfg.file_tools.max_write_bytes == 262144

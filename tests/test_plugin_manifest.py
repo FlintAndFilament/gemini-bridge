@@ -28,7 +28,7 @@ def test_marketplace_ships_main_never_develop() -> None:
 
 
 def test_server_launches_frozen_with_the_venv_in_plugin_data() -> None:
-    server = load(".claude-plugin/plugin.json")["mcpServers"]["gemini"]
+    server = load(".claude-plugin/plugin.json")["mcpServers"]["mcp"]
     assert server["command"] == "uv"
     assert server["args"][:2] == ["run", "--frozen"]
     project_index = server["args"].index("--project")

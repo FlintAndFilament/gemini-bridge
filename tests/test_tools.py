@@ -96,7 +96,7 @@ class TestCallGemini:
         result = await call_gemini(
             client=client,
             transcript=transcript,
-            tool_name="gemini_brainstorm",
+            tool_name="brainstorm",
             session_name="default",
             system_instruction="Be creative.",
             prompt="Ideas for caching?",
@@ -112,7 +112,7 @@ class TestCallGemini:
         result = await call_gemini(
             client=client,
             transcript=transcript,
-            tool_name="gemini_ask",
+            tool_name="ask",
             session_name="default",
             system_instruction="Answer.",
             prompt="Hello",
@@ -128,14 +128,14 @@ class TestCallGemini:
         await call_gemini(
             client=client,
             transcript=transcript,
-            tool_name="gemini_review",
+            tool_name="review",
             session_name="default",
             system_instruction="Review.",
             prompt="Check this code.",
             thinking="medium",
         )
         content = transcript.path.read_text()
-        assert "gemini_review" in content
+        assert "review" in content
         assert "Check this code." in content
 
     async def test_fallback_to_default_model_on_503(self, tmp_path: Path) -> None:
@@ -150,7 +150,7 @@ class TestCallGemini:
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
-                tool_name="gemini_ask",
+                tool_name="ask",
                 session_name="default",
                 system_instruction="Answer.",
                 prompt="Hello",
@@ -180,7 +180,7 @@ class TestCallGemini:
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
-                tool_name="gemini_ask",
+                tool_name="ask",
                 session_name="default",
                 system_instruction="Answer.",
                 prompt="Hello",
@@ -222,7 +222,7 @@ class TestModelParamHint:
         hint = model_param_hint(_make_client_api_key())
         assert "gemini-flash-latest" in hint
         assert "gemini-3.5-flash" in hint
-        assert "gemini_list_models" in hint
+        assert "list_models" in hint
 
     def test_helper_vertex_omits_aliases(self) -> None:
         hint = model_param_hint(_make_client())  # adc -> vertex
@@ -245,10 +245,10 @@ class TestModelParamHint:
         transcript = TranscriptWriter(str(tmp_path), datetime.now())
         mcp = FastMCP("dev")
         register_ask(mcp, _make_client_api_key(), transcript)
-        desc = _model_description(mcp, "gemini_ask")
+        desc = _model_description(mcp, "ask")
         # The hint must actually reach the tool schema (Field(description=...), not a bare str).
         assert "gemini-flash-latest" in desc
-        assert "gemini_list_models" in desc
+        assert "list_models" in desc
 
     def test_registered_schema_vertex_omits_aliases(self, tmp_path: Path) -> None:
         from datetime import datetime
@@ -260,7 +260,7 @@ class TestModelParamHint:
         transcript = TranscriptWriter(str(tmp_path), datetime.now())
         mcp = FastMCP("vertex")
         register_ask(mcp, _make_client(), transcript)  # adc -> vertex
-        desc = _model_description(mcp, "gemini_ask")
+        desc = _model_description(mcp, "ask")
         assert "-latest" not in desc
         assert "gemini-3.5-flash" in desc
 
@@ -273,11 +273,11 @@ class TestAllParamDescriptionsSurface:
     """
 
     EXPECTED = {
-        "gemini_ask": ["prompt", "thinking", "session_name", "model"],
-        "gemini_brainstorm": ["topic", "context", "thinking", "session_name", "model"],
-        "gemini_review": ["content", "question", "thinking", "session_name", "model"],
-        "gemini_debug": ["error", "context", "thinking", "session_name", "model"],
-        "gemini_architect": ["description", "question", "thinking", "session_name", "model"],
+        "ask": ["prompt", "thinking", "session_name", "model"],
+        "brainstorm": ["topic", "context", "thinking", "session_name", "model"],
+        "review": ["content", "question", "thinking", "session_name", "model"],
+        "debug": ["error", "context", "thinking", "session_name", "model"],
+        "architect": ["description", "question", "thinking", "session_name", "model"],
     }
 
     def test_every_param_has_a_schema_description(self, tmp_path: Path) -> None:
@@ -291,10 +291,10 @@ class TestAllParamDescriptionsSurface:
 
     def test_representative_descriptions_are_correct(self, tmp_path: Path) -> None:
         mcp = _register_all_tools(tmp_path)
-        assert "question or request" in (_param_description(mcp, "gemini_ask", "prompt") or "")
-        assert "Reasoning depth" in (_param_description(mcp, "gemini_ask", "thinking") or "")
-        assert "stack trace" in (_param_description(mcp, "gemini_debug", "error") or "")
-        assert "brainstorm" in (_param_description(mcp, "gemini_brainstorm", "topic") or "")
+        assert "question or request" in (_param_description(mcp, "ask", "prompt") or "")
+        assert "Reasoning depth" in (_param_description(mcp, "ask", "thinking") or "")
+        assert "stack trace" in (_param_description(mcp, "debug", "error") or "")
+        assert "brainstorm" in (_param_description(mcp, "brainstorm", "topic") or "")
 
 
 def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # type: ignore[type-arg]
@@ -332,18 +332,18 @@ class TestCapabilityMatrix:
     """Each MCP tool, called through FastMCP, declares its row of the capability matrix."""
 
     ARGS = {
-        "gemini_ask": {"prompt": "q"},
-        "gemini_debug": {"error": "boom"},
-        "gemini_brainstorm": {"topic": "t"},
-        "gemini_architect": {"description": "d"},
-        "gemini_review": {"content": "c"},
+        "ask": {"prompt": "q"},
+        "debug": {"error": "boom"},
+        "brainstorm": {"topic": "t"},
+        "architect": {"description": "d"},
+        "review": {"content": "c"},
     }
     EXPECTED = {
-        "gemini_ask": READ_TOOLS,
-        "gemini_debug": READ_TOOLS,
-        "gemini_brainstorm": READ_TOOLS | {"write_file"},
-        "gemini_architect": READ_TOOLS | {"write_file"},
-        "gemini_review": READ_TOOLS | {"write_file"},
+        "ask": READ_TOOLS,
+        "debug": READ_TOOLS,
+        "brainstorm": READ_TOOLS | {"write_file"},
+        "architect": READ_TOOLS | {"write_file"},
+        "review": READ_TOOLS | {"write_file"},
     }
 
     async def _run(self, tmp_path: Path, tool: str, workspace: object) -> AsyncMock:
@@ -371,11 +371,11 @@ class TestCapabilityMatrix:
         assert _declared(gen) == set()
 
     async def test_kill_switch(self, tmp_path: Path) -> None:
-        gen = await self._run(tmp_path, "gemini_review", _workspace(tmp_path, enabled=False))
+        gen = await self._run(tmp_path, "review", _workspace(tmp_path, enabled=False))
         assert _declared(gen) == set()
 
     async def test_tools_preamble_added_to_system_instruction(self, tmp_path: Path) -> None:
-        gen = await self._run(tmp_path, "gemini_ask", _workspace(tmp_path))
+        gen = await self._run(tmp_path, "ask", _workspace(tmp_path))
         si = gen.call_args.kwargs["config"].system_instruction
         assert "read_file" in si and "write_file" not in si
 
@@ -396,7 +396,7 @@ class TestToolCallsInTranscript:
         result = await call_gemini(
             client=client,
             transcript=transcript,
-            tool_name="gemini_ask",
+            tool_name="ask",
             session_name="default",
             system_instruction="Answer.",
             prompt="q",
@@ -422,7 +422,7 @@ class TestToolCallsInTranscript:
         result = await call_gemini(
             client=client,
             transcript=transcript,
-            tool_name="gemini_ask",
+            tool_name="ask",
             session_name="default",
             system_instruction="Answer.",
             prompt="q",
@@ -455,39 +455,39 @@ class TestArtifacts:
         return content[0].text  # type: ignore[no-any-return,index]
 
     def _artifacts(self, tmp_path: Path) -> list[Path]:
-        d = tmp_path / "gemini-artifacts"
+        d = tmp_path / "sidekick-artifacts"
         return sorted(d.iterdir()) if d.exists() else []
 
     async def test_architect_saves_by_default(self, tmp_path: Path) -> None:
-        reply = await self._call(tmp_path, "gemini_architect", {"description": "Design a cache"})
+        reply = await self._call(tmp_path, "architect", {"description": "Design a cache"})
         [path] = self._artifacts(tmp_path)
-        assert path.name.endswith("-gemini-architect-design-a-cache.md")
+        assert path.name.endswith("-architect-design-a-cache.md")
         assert "the answer" in path.read_text()
         assert reply.startswith("the answer")
-        assert f"[sidekick] artifact saved: gemini-artifacts/{path.name}" in reply
+        assert f"[sidekick] artifact saved: sidekick-artifacts/{path.name}" in reply
 
     async def test_review_saves_by_default(self, tmp_path: Path) -> None:
-        await self._call(tmp_path, "gemini_review", {"content": "code", "question": "Is auth ok"})
+        await self._call(tmp_path, "review", {"content": "code", "question": "Is auth ok"})
         [path] = self._artifacts(tmp_path)
-        assert path.name.endswith("-gemini-review-is-auth-ok.md")
+        assert path.name.endswith("-review-is-auth-ok.md")
 
     async def test_opt_out(self, tmp_path: Path) -> None:
         reply = await self._call(
-            tmp_path, "gemini_architect", {"description": "d", "write_artifact": False}
+            tmp_path, "architect", {"description": "d", "write_artifact": False}
         )
         assert self._artifacts(tmp_path) == []
         assert "artifact" not in reply
 
     async def test_brainstorm_off_by_default(self, tmp_path: Path) -> None:
-        await self._call(tmp_path, "gemini_brainstorm", {"topic": "t"})
+        await self._call(tmp_path, "brainstorm", {"topic": "t"})
         assert self._artifacts(tmp_path) == []
 
     async def test_brainstorm_opt_in(self, tmp_path: Path) -> None:
-        await self._call(tmp_path, "gemini_brainstorm", {"topic": "t", "write_artifact": True})
+        await self._call(tmp_path, "brainstorm", {"topic": "t", "write_artifact": True})
         assert len(self._artifacts(tmp_path)) == 1
 
     async def test_saved_even_with_tools_disabled(self, tmp_path: Path) -> None:
-        await self._call(tmp_path, "gemini_review", {"content": "c"}, enabled=False)
+        await self._call(tmp_path, "review", {"content": "c"}, enabled=False)
         assert len(self._artifacts(tmp_path)) == 1
 
     async def test_save_failure_keeps_answer(self, tmp_path: Path, monkeypatch: object) -> None:
@@ -497,20 +497,20 @@ class TestArtifacts:
             raise OSError("disk full")
 
         monkeypatch.setattr(ArtifactStore, "save", boom)  # type: ignore[attr-defined]
-        reply = await self._call(tmp_path, "gemini_review", {"content": "c"})
+        reply = await self._call(tmp_path, "review", {"content": "c"})
         assert reply.startswith("the answer")
         assert "[sidekick notice] artifact not saved: disk full" in reply
 
     def test_ask_and_debug_have_no_write_artifact_param(self, tmp_path: Path) -> None:
         mcp = _register_all_tools(tmp_path)
         tools = {t.name: t for t in asyncio.run(mcp.list_tools())}  # type: ignore[attr-defined]
-        assert "write_artifact" not in tools["gemini_ask"].inputSchema["properties"]
-        assert "write_artifact" not in tools["gemini_debug"].inputSchema["properties"]
+        assert "write_artifact" not in tools["ask"].inputSchema["properties"]
+        assert "write_artifact" not in tools["debug"].inputSchema["properties"]
         assert (
-            tools["gemini_architect"].inputSchema["properties"]["write_artifact"]["default"] is True
+            tools["architect"].inputSchema["properties"]["write_artifact"]["default"] is True
         )
         assert (
-            tools["gemini_brainstorm"].inputSchema["properties"]["write_artifact"]["default"]
+            tools["brainstorm"].inputSchema["properties"]["write_artifact"]["default"]
             is False
         )
 
@@ -530,7 +530,7 @@ class TestFallbackAfterTools:
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
-                tool_name="gemini_review",
+                tool_name="review",
                 session_name="default",
                 system_instruction="Review.",
                 prompt="q",
@@ -570,7 +570,7 @@ class TestResolvedFallback:
             result = await call_gemini(
                 client=client,
                 transcript=_make_transcript(tmp_path),
-                tool_name="gemini_ask",
+                tool_name="ask",
                 session_name="default",
                 system_instruction="A.",
                 prompt="q",
@@ -586,7 +586,7 @@ class TestResolvedFallback:
         await call_gemini(
             client=client,
             transcript=_make_transcript(tmp_path),
-            tool_name="gemini_ask",
+            tool_name="ask",
             session_name="default",
             system_instruction="A.",
             prompt="q",

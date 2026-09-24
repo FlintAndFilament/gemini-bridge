@@ -46,7 +46,7 @@ def test_custom_deny_reaches_sandbox(tmp_path: Path) -> None:
 
 def test_artifacts_dir_defaults_inside_root(tmp_path: Path) -> None:
     ws = build_workspace(_config(), tmp_path)
-    assert ws.artifacts.directory == tmp_path.resolve() / "gemini-artifacts"
+    assert ws.artifacts.directory == tmp_path.resolve() / "sidekick-artifacts"
 
 
 def test_artifacts_dir_outside_root_rejected(tmp_path: Path) -> None:

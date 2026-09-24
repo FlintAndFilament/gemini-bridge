@@ -1,8 +1,8 @@
 # Tools Reference
 
-Seven tools: five generating tools (`gemini_ask`, `gemini_brainstorm`, `gemini_review`,
-`gemini_debug`, `gemini_architect`) that call Gemini, and two utilities that do not generate:
-[`gemini_list_models`](#gemini_list_models) and [`gemini_help`](#gemini_help).
+Seven tools: five generating tools (`ask`, `brainstorm`, `review`,
+`debug`, `architect`) that call Gemini, and two utilities that do not generate:
+[`list_models`](#list_models) and [`help`](#help).
 
 The five generating tools share four optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; omit to use `default_thinking`
@@ -24,7 +24,7 @@ The five generating tools share four optional parameters:
   resolved at startup). The parameter's description is **backend-aware**: it names the concrete
   id each alias resolved to, the recommended ids for your active backend, and the default.
   Sessions are keyed by tool + `session_name` + resolved model, so switching model starts a
-  fresh session. Call [`gemini_list_models`](#gemini_list_models) to discover valid values, and
+  fresh session. Call [`list_models`](#list_models) to discover valid values, and
   see [configuration.md](configuration.md#choosing-a-model) for the recommended set and fallback
   behavior.
 
@@ -42,11 +42,11 @@ requests; after that Gemini is told to answer with what it has.
 
 | Tool | Read tools | `write_file` | Saves answer as artifact |
 |---|---|---|---|
-| `gemini_ask` | ✅ | — | — |
-| `gemini_debug` | ✅ | — | — |
-| `gemini_brainstorm` | ✅ | ✅ | opt-in (`write_artifact=true`) |
-| `gemini_architect` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
-| `gemini_review` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
+| `ask` | ✅ | — | — |
+| `debug` | ✅ | — | — |
+| `brainstorm` | ✅ | ✅ | opt-in (`write_artifact=true`) |
+| `architect` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
+| `review` | ✅ | ✅ | **default** (`write_artifact=false` to skip) |
 
 **Tools Gemini can call** (paths are relative to the repo root):
 
@@ -95,10 +95,10 @@ workspace at registration, so none can drift from the capability actually wired 
   only about the first 2048 characters of a server's instructions and silently drops the rest
   (#78), so this text is held under 2000 characters in every configuration, and a test enforces
   that. When file tools are off, it states the reason instead.
-- **`gemini_help`** — the detail that does not fit: the full deny-list, the directories
+- **`help`** — the detail that does not fit: the full deny-list, the directories
   `glob`/`grep` skip, the result caps and write cap, the web rules, sessions, and everything that
   reaches disk (the transcript path and which tools save artifacts). See
-  [gemini_help](#gemini_help).
+  [help](#help).
 - **Tool descriptions** — each generating tool's description adds its repository-access
   sentence, a "Writes to disk" clause naming the transcript entry, `write_file` where the tool
   has it, and the artifact if it saves one, and ends with its web-access note.
@@ -106,10 +106,10 @@ workspace at registration, so none can drift from the capability actually wired 
   only while file tools are enabled. Artifact saving does not set it: the store always creates a
   new file (`-2`, `-3` … on collision) and never overwrites. `readOnlyHint` is false on the five
   generating tools, because every one of them appends to the transcript, and true on
-  `gemini_list_models` and `gemini_help`, which write nothing — a client that gates
+  `list_models` and `help`, which write nothing — a client that gates
   auto-approval on annotations would otherwise prompt for the harmless calls and wave the rest
   through. `openWorldHint` is true on every tool that reaches the Gemini API (all but
-  `gemini_help`).
+  `help`).
 
 Every advertised value is read from whatever enforces it, never restated: the capability rows
 from the `CAPABILITY` each tool module exports (built from its own `_WRITE`, `_ARTIFACTS` and
@@ -119,15 +119,15 @@ directories from `WALK_SKIP_DIRS` minus whatever the deny-list already blocks, t
 from the `*_MAX_*` constants `file_tools.py` enforces, and the write cap from
 `FileTools.max_write_bytes`. So changing a tool's capability row means changing `_WRITE` /
 `_ARTIFACTS` in its module and nothing else — the tool's description, the server instructions
-and `gemini_help` all follow.
+and `help` all follow.
 
 `tests/test_capability_metadata.py` runs each tool and compares the files that actually appear
 against what the text promised, so wording that over- or under-claims fails the suite.
 
-**Artifacts** land in `artifacts_dir` (default `./gemini-artifacts/`, which must be inside the
+**Artifacts** land in `artifacts_dir` (default `./sidekick-artifacts/`, which must be inside the
 sandbox root and not denied, or the server refuses to start) as
 `YYYYMMDD-HHMM-<tool>-<topic-slug>.md` — for example
-`20260921-1432-gemini-review-is-there-a-race-condition-in.md`. The slug comes from `question`
+`20260921-1432-review-is-there-a-race-condition-in.md`. The slug comes from `question`
 (else `content` / `description`) for review and architect, and from `topic` for brainstorm. The
 file starts with a header naming the tool, model, session, and time, followed by the answer
 (including any sources footer). The reply ends with `[sidekick] artifact saved: <path>`,
@@ -149,7 +149,7 @@ them. Both are attached together or not at all.
 generating tool takes `web: bool | null`, where `null` uses the config default:
 
 ```
-gemini_ask(prompt="...", web=true)
+ask(prompt="...", web=true)
 ```
 
 Grounding is billed per request whenever the tools are attached, even if Gemini does not
@@ -164,7 +164,7 @@ your repository, *"write this to `deploy.sh`"* is a plausible instruction for th
 follow. The deny-list blocks `.git`, `.env` and key files, but a CI workflow, a test file or a
 shell script inside the repo are all writable and all consequential.
 
-The cost is low, because the bridge writes artifacts itself: a web-enabled `gemini_review`
+The cost is low, because the bridge writes artifacts itself: a web-enabled `review`
 still produces its artifact. What it loses is Gemini writing directly into the tree during that
 same call. When you want both, make two calls — one with `web=true` to research, one with
 `web=false` and a new `session_name` to write.
@@ -172,7 +172,7 @@ same call. When you want both, make two calls — one with `web=true` to researc
 One function, `resolve_capabilities()` in `web_tools.py`, implements this rule. `call_gemini()`
 calls it once per call, and the result decides both the tools handed to Gemini and what its
 system instruction says it can do. The advertised text (tool descriptions, instructions,
-`gemini_help`) states the same rule in words; it does not call the function.
+`help`) states the same rule in words; it does not call the function.
 
 ### What is recorded
 
@@ -251,13 +251,13 @@ Claude session to do exactly that.
   content is in play), and the reply opens with `[sidekick notice] Web access was requested
   but is unavailable on the <method> backend, so this answer is not web-grounded.` That applies
   when web access comes from `web_tools.enabled` too. The tool descriptions, server instructions
-  and `gemini_help` say web access is unavailable.
+  and `help` say web access is unavailable.
 - Other built-in tools the SDK exposes — `exa_ai_search`, `mcp_servers`, `code_execution`,
   `file_search` — are deliberately not enabled.
 
 ---
 
-## gemini_ask
+## ask
 
 **Persona:** Direct, precise technical assistant. No specialized persona — use when no other tool fits.
 
@@ -281,12 +281,12 @@ Claude session to do exactly that.
 
 **Example:**
 ```
-gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait?")
+ask(prompt="What's the difference between asyncio.gather and asyncio.wait?")
 ```
 
 ---
 
-## gemini_brainstorm
+## brainstorm
 
 **Persona:** Creative thinking partner. Challenges Claude's direction, pushes unconventional approaches, plays devil's advocate.
 
@@ -313,7 +313,7 @@ gemini_ask(prompt="What's the difference between asyncio.gather and asyncio.wait
 
 **Example:**
 ```
-gemini_brainstorm(
+brainstorm(
     topic="How should we structure retry logic for the Pub/Sub consumer?",
     context="Currently planning exponential backoff with a dead-letter queue"
 )
@@ -321,7 +321,7 @@ gemini_brainstorm(
 
 ---
 
-## gemini_review
+## review
 
 **Persona:** Critical technical reviewer. Finds problems, prioritizes by severity, doesn't soften feedback.
 
@@ -348,7 +348,7 @@ gemini_brainstorm(
 
 **Example:**
 ```
-gemini_review(
+review(
     content="Review src/sidekick/client.py, the session cache in particular.",
     question="Is there a race condition in the session cleanup logic?"
 )
@@ -356,7 +356,7 @@ gemini_review(
 
 ---
 
-## gemini_debug
+## debug
 
 **Persona:** Systematic debugging assistant. Generates evidence-based root cause hypotheses and specific diagnostic steps.
 
@@ -382,7 +382,7 @@ gemini_review(
 
 **Example:**
 ```
-gemini_debug(
+debug(
     error="ConnectionResetError: [Errno 54] Connection reset by peer",
     context="Happens only on the 3rd request to the Pub/Sub emulator, after a 30s idle period"
 )
@@ -390,7 +390,7 @@ gemini_debug(
 
 ---
 
-## gemini_architect
+## architect
 
 **Persona:** Software architecture advisor. Opinionated when a clearly better path exists, names tradeoffs explicitly when context-dependent.
 
@@ -418,7 +418,7 @@ gemini_debug(
 
 **Example:**
 ```
-gemini_architect(
+architect(
     description="We're building a multi-tenant SaaS on GCP. Each tenant gets their own Pub/Sub topic...",
     question="Is per-tenant topic isolation worth the operational overhead at 1000 tenants?"
 )
@@ -426,7 +426,7 @@ gemini_architect(
 
 ---
 
-## gemini_list_models
+## list_models
 
 **Purpose:** Discovery utility — lists the Gemini models available on the bridge's active
 backend, so Claude (or you) can pick a valid value for the `model=` parameter. This is a
@@ -464,8 +464,8 @@ nothing, and is not recorded in the transcript.
 
 **Example:**
 ```
-gemini_list_models()
-gemini_list_models(refresh=True)   # force a fresh fetch
+list_models()
+list_models(refresh=True)   # force a fresh fetch
 ```
 
 **Sample output** (api_key / Developer API backend; abridged — your live list reflects the
@@ -491,7 +491,7 @@ catalog (the bridge still accepts them as `model=` values and resolves them itse
 
 ```mermaid
 flowchart TD
-    A["gemini_list_models(refresh?)"] --> B{cached and not refresh?}
+    A["list_models(refresh?)"] --> B{cached and not refresh?}
     B -->|yes| C[return cached table]
     B -->|no| D["client.list_models → backend models.list"]
     D --> E{fetch ok?}
@@ -505,14 +505,14 @@ See [configuration.md](configuration.md#choosing-a-model) for the recommended mo
 
 ---
 
-## gemini_help
+## help
 
 The full detail behind the short server instructions (#78): the `--help` for Claude. It writes
 nothing, makes no Gemini call, and is not recorded in the transcript.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `topic` | string | all topics | `tools`, `files`, `web`, `sessions`, `disk`, or a generating tool's name (e.g. `gemini_review`) |
+| `topic` | string | all topics | `tools`, `files`, `web`, `sessions`, `disk`, or a generating tool's name (e.g. `review`) |
 
 | Topic | Contents |
 |---|---|

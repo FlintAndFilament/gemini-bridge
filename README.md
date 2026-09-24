@@ -23,13 +23,13 @@ Five focused tools, each with its own persona, plus two utilities. Not a 37-tool
 
 | Tool | Persona | Required parameter | Can write files? |
 |---|---|---|---|
-| `gemini_ask` | Direct, precise — general purpose | `prompt` | no |
-| `gemini_brainstorm` | Devil's advocate, unconventional | `topic` | yes |
-| `gemini_review` | Critical, severity-first | `content` | yes |
-| `gemini_debug` | Evidence-based, hypothesis-driven | `error` | no |
-| `gemini_architect` | Opinionated, explicit tradeoffs | `description` | yes |
-| `gemini_list_models` | Lists the chat models on your backend, for `model=` | — | no |
-| `gemini_help` | Claude's `--help`: full detail by topic | — | no |
+| `ask` | Direct, precise — general purpose | `prompt` | no |
+| `brainstorm` | Devil's advocate, unconventional | `topic` | yes |
+| `review` | Critical, severity-first | `content` | yes |
+| `debug` | Evidence-based, hypothesis-driven | `error` | no |
+| `architect` | Opinionated, explicit tradeoffs | `description` | yes |
+| `list_models` | Lists the chat models on your backend, for `model=` | — | no |
+| `help` | Claude's `--help`: full detail by topic | — | no |
 
 **Parameters on the five generating tools** (all optional):
 
@@ -49,9 +49,9 @@ Five focused tools, each with its own persona, plus two utilities. Not a 37-tool
 
 See [docs/tools.md](docs/tools.md#web-access).
 
-**What Claude is told.** Claude Code keeps only about the first 2048 characters of a server's instructions, so the bridge sends a short overview: the tools, what they can read and write, the web rules, and the parameters. The rest is one `gemini_help(topic=...)` call away, with topics `tools`, `files`, `web`, `sessions`, `disk` or a tool name. Every tool's description and MCP annotations (`destructiveHint` on the write-capable tools) are built from the live configuration, so what Claude is told always matches what the server does.
+**What Claude is told.** Claude Code keeps only about the first 2048 characters of a server's instructions, so the bridge sends a short overview: the tools, what they can read and write, the web rules, and the parameters. The rest is one `help(topic=...)` call away, with topics `tools`, `files`, `web`, `sessions`, `disk` or a tool name. Every tool's description and MCP annotations (`destructiveHint` on the write-capable tools) are built from the live configuration, so what Claude is told always matches what the server does.
 
-**Artifacts.** `gemini_review` and `gemini_architect` save each answer to `gemini-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` unless called with `write_artifact=false`. `gemini_brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
+**Artifacts.** `review` and `architect` save each answer to `sidekick-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` unless called with `write_artifact=false`. `brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
 
 **Transcripts and logs.** Every exchange, including each file operation, web search and source, is appended to `{transcript_dir}/YYYYMMDD-HHMM-sidekick-transcript.md`; see [docs/transcripts.md](docs/transcripts.md). Server logs go to `~/.config/sidekick/logs/YYYYMMDD-sidekick.log`; see [docs/logging.md](docs/logging.md).
 
@@ -66,7 +66,7 @@ sequenceDiagram
     participant G as Gemini API<br/>(Developer API or Vertex AI)
     participant R as Google redirect
 
-    CC->>S: gemini_review(content, model?, thinking?, web?, session_name?)
+    CC->>S: review(content, model?, thinking?, web?, session_name?)
     Note over S: resolve model (alias → newest release)<br/>pick tools: repo reads, + write_file unless web=true,<br/>+ google_search / url_context if web=true
     loop until Gemini answers (tool budget capped)
         S->>G: session history + prompt + tool declarations
@@ -123,7 +123,7 @@ Windows: not yet tested end to end.
 | `default_thinking` | `medium` | Thinking level when omitted per call |
 | `default_model` | *(newest Flash)* | Model for calls that omit `model=`: an alias (`flash` / `flash-lite` / `pro`) or a concrete id. Unset → newest Flash, resolved at startup. Per-call `model=` always overrides |
 | `transcript_dir` | `./session-summaries` | Transcript directory; relative paths resolve to the project root (`CLAUDE_PROJECT_DIR`, falling back to the working directory) |
-| `artifacts_dir` | `./gemini-artifacts` | Where architect/review (and opted-in brainstorm) answers are saved; must be inside the project root |
+| `artifacts_dir` | `./sidekick-artifacts` | Where architect/review (and opted-in brainstorm) answers are saved; must be inside the project root |
 | `file_tools.enabled` | `true` | Kill switch for Gemini's repository access |
 | `file_tools.deny` | secrets list | Paths Gemini may never read or write (replaces the default list when set) |
 | `file_tools.max_write_bytes` | `262144` | Size cap for a single `write_file` |
@@ -160,7 +160,7 @@ code or config change.
 - **Offline:** if the model list can't be read at startup, the bridge uses pinned known-good
   defaults (`gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`) and logs a warning.
 - **Visibility:** the startup log and artifacts always name the concrete model (never an
-  alias); transcripts don't record the model. `gemini_list_models` marks the default and the newest model per family.
+  alias); transcripts don't record the model. `list_models` marks the default and the newest model per family.
 - **Thinking levels:** the bridge picks the right API parameter per model and adapts when a
   model rejects a level (e.g. `gemini-3.8-flash` refuses the lowest level, so `thinking="none"`
   steps up to `low`). See [docs/configuration.md](docs/configuration.md#choosing-a-model).
@@ -226,7 +226,7 @@ Claude picks per call based on question complexity. See [docs/tools.md](docs/too
 
 ## Roadmap
 
-Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `gemini_help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
+Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
 
 See [docs/roadmap.md](docs/roadmap.md) for what shipped when, and why.
 

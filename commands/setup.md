@@ -57,5 +57,5 @@ instead of a second one:
    On `"ok": false`, show `error` and offer to retry from step 3. Otherwise
    show any `warnings`, and show `backup`'s path if it is non-null.
 5. Tell the user to restart Claude Code, or run `/mcp` and reconnect
-   `gemini`, so the server reads the new config. For api_key auth, remind
+   `plugin:sidekick:mcp`, so the server reads the new config. For api_key auth, remind
    them the env var must be exported in the shell that starts Claude Code.

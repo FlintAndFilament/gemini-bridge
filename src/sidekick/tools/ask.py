@@ -1,10 +1,10 @@
 """
 sidekick/tools/ask.py
 ---------------------------
-MCP tool: gemini_ask — general-purpose Gemini query.
+MCP tool: ask — general-purpose Gemini query.
 
 Responsibilities:
-  - Register the gemini_ask MCP tool with the server
+  - Register the ask MCP tool with the server
   - Handle prompt parameter and optional thinking level
   - Return Gemini's response as a string
 
@@ -43,7 +43,7 @@ _SYSTEM_PROMPT = (
     "Answer directly and precisely. Prefer concrete examples. When uncertain, say so."
 )
 
-_TOOL_NAME = "gemini_ask"
+_TOOL_NAME = "ask"
 # Capability row (#68): read-only: findings go back to Claude, not to disk.
 _WRITE = False
 
@@ -67,7 +67,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_ask with the MCP server."""
+    """Register ask with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -81,7 +81,7 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_ask(
+    async def ask(
         prompt: Annotated[str, Field(description="The question or request to send to Gemini")],
         thinking: Annotated[
             Optional[ThinkingLevel],

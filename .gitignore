@@ -53,4 +53,4 @@ CLAUDE.md
 .env
 
 # Gemini artifacts (local only)
-gemini-artifacts/
+sidekick-artifacts/

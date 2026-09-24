@@ -20,7 +20,7 @@ Raises:
   (none) — pure functions over plain values
 
 Used by:  tools/base.py (call_gemini, capability_hint), client.py (build_config),
-          guide.py (instructions and gemini_help)
+          guide.py (instructions and help)
 Imports:  google-genai types
 """
 

@@ -7,7 +7,7 @@ Responsibilities:
   - Build the FastMCP server instance
   - Accept pre-constructed GeminiClient, TranscriptWriter, and Workspace (injected by __main__.py)
   - Register all 7 tools by calling each tool module's register() function
-  - Send the short instructions from guide.py and wire gemini_help to its full detail (#74, #78)
+  - Send the short instructions from guide.py and wire help to its full detail (#74, #78)
   - Return the configured server instance for running
 
 Design notes:

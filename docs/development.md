@@ -33,7 +33,7 @@ claude --plugin-dir .
 Runs the plugin straight from this checkout — no marketplace, no install step. `uv` builds the
 plugin's own venv at `${CLAUDE_PLUGIN_DATA}/venv` on first launch and reuses it after. Inside
 that session, run `/sidekick:setup` to write `~/.config/sidekick/config.json`, then call
-any `gemini_*` tool (or `gemini_help`) to confirm the `gemini` MCP server connected.
+any sidekick tool (e.g. `help`) to confirm the `mcp` server connected.
 
 Whenever you add or change a dependency in `pyproject.toml`, run `uv lock`. `uv.lock` is
 committed and the server launches with `uv run --frozen`, which refuses to resolve a stale
@@ -45,7 +45,7 @@ The sandbox root is the project root: `CLAUDE_PROJECT_DIR` when Claude Code sets
 the server's working directory (#102). File tools switch off when that directory is your home
 directory, `/`, or an ancestor of home.
 
-After a restart, check the tool list with `gemini_help` or `gemini_list_models`. A resumed
+After a restart, check the tool list with `help` or `list_models`. A resumed
 Claude Code conversation can show tool schemas from before the restart.
 
 ## Watching logs
@@ -113,7 +113,7 @@ Each job declares least-privilege permissions (#72).
 
 5. Document it in `docs/tools.md`.
 
-The server instructions and `gemini_help` pick up the new capability row by themselves:
+The server instructions and `help` pick up the new capability row by themselves:
 `guide.py` builds its text from `CAPABILITIES`. Keep the instructions under
 `INSTRUCTIONS_BUDGET` (2000 characters); Claude Code drops anything past about 2048.
 
