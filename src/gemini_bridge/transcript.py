@@ -62,7 +62,7 @@ class TranscriptWriter:
             raise TranscriptError(
                 f"Transcript directory cannot be used: {config_transcript_dir} ({reason}).\n"
                 "Fix: set transcript_dir in ~/.config/gemini-bridge/config.json to a writable "
-                "path, or re-run setup.sh."
+                "path, or run /sidekick:setup in Claude Code."
             ) from exc
         filename = startup_time.strftime("%Y%m%d-%H%M-gemini-bridge-transcript.md")
         self._path = transcript_dir / filename

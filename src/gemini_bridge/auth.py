@@ -129,7 +129,7 @@ def _load_keychain(auth_config: AuthConfig) -> google.auth.credentials.Credentia
         raise AuthError(
             f"Gemini auth error: Keychain item not found "
             f"(service={service!r}, account={account!r}).\n"
-            "Fix: re-run setup.sh to store the service account key."
+            "Fix: run /sidekick:setup in Claude Code to store the service account key."
         ) from exc
     except FileNotFoundError as exc:
         _log.error("security CLI not found — Keychain auth requires macOS")
@@ -147,7 +147,7 @@ def _load_keychain(auth_config: AuthConfig) -> google.auth.credentials.Credentia
             _log.error("keychain value hex decode failed: %s", exc)
             raise AuthError(
                 "Gemini auth error: Keychain value could not be decoded.\n"
-                "Fix: re-run setup.sh to re-store the service account key."
+                "Fix: run /sidekick:setup in Claude Code to re-store the service account key."
             ) from exc
     try:
         sa_info = json.loads(raw)
@@ -155,7 +155,7 @@ def _load_keychain(auth_config: AuthConfig) -> google.auth.credentials.Credentia
         _log.error("keychain value is not valid JSON: %s", exc)
         raise AuthError(
             "Gemini auth error: Keychain value is not valid service account JSON.\n"
-            "Fix: re-run setup.sh to re-store the service account key."
+            "Fix: run /sidekick:setup in Claude Code to re-store the service account key."
         ) from exc
 
     _log.debug("keychain credentials loaded (service=%r, account=%r)", service, account)
@@ -179,7 +179,7 @@ def _load_api_key(auth_config: AuthConfig) -> str:
             'Fix: set api_key_env to the variable name (e.g. "GEMINI_API_KEY"), '
             "then export that variable:\n"
             "  export GEMINI_API_KEY=<your-key>\n"
-            "Edit ~/.config/gemini-bridge/config.json or re-run setup.sh."
+            "Edit ~/.config/gemini-bridge/config.json or run /sidekick:setup in Claude Code."
         )
     key = os.environ.get(env_var, "").strip()
     if not key:
