@@ -13,6 +13,3 @@
 
 Design specs and implementation plans for larger features live in
 [superpowers/specs/](superpowers/specs/) and [superpowers/plans/](superpowers/plans/).
-
-Research reports (evidence-backed answers to open questions, not implementation plans) live in
-[research/](research/), e.g. [research/2026-09-23-python-mcp-plugin-packaging.md](research/2026-09-23-python-mcp-plugin-packaging.md).
