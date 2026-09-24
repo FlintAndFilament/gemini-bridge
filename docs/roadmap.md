@@ -6,7 +6,7 @@ What has shipped, what is open, and what is parked. Rebuilt from git history and
 The `26.7.x` labels are the names the July releases went out under. Work after 26.7.4 is grouped
 by feature and issue number instead of by version.
 
-The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: `mv ~/.config/gemini-bridge ~/.config/sidekick`.
+The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: **before** `/plugin update sidekick`, run `mv ~/.config/gemini-bridge ~/.config/sidekick`, then update and restart. (After the update, the new server has already created `~/.config/sidekick/`, and `mv` nests the old folder inside it.)
 
 ---
 
