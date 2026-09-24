@@ -6,6 +6,8 @@ What has shipped, what is open, and what is parked. Rebuilt from git history and
 The `26.7.x` labels are the names the July releases went out under. Work after 26.7.4 is grouped
 by feature and issue number instead of by version.
 
+The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: `mv ~/.config/gemini-bridge ~/.config/sidekick`.
+
 ---
 
 ## Shipped
@@ -20,7 +22,7 @@ full docs.**
 - Env-file service account auth (`GOOGLE_APPLICATION_CREDENTIALS`, #14)
 - Apple Keychain service account auth, macOS only (#16): the SA JSON is read into memory at
   startup via `security(1)` and hex-decoded when the CLI returns it that way (#25)
-- Transcript logging to `YYYYMMDD-HHMM-gemini-bridge-transcript.md`, project-local
+- Transcript logging to `YYYYMMDD-HHMM-sidekick-transcript.md`, project-local
   `./session-summaries` by default (#33)
 - Structured logging to stderr and a daily log file, 4 files kept (#26, #27, #28)
 - Interactive `setup.sh` wizard that pre-fills prompts from an existing config (#23, #24)
@@ -35,7 +37,7 @@ credential management beyond one-time setup.
 - `api_key` auth method (#30): no GCP project or `gcloud` needed. `AuthResult` + `build_auth()`
   dispatch in `auth.py`; `project` became optional, required only for the Vertex methods. The
   config stores the env var **name**, never the key.
-- CI warnings and failures fixed (#32); transcript files renamed to `gemini-bridge-transcript`
+- CI warnings and failures fixed (#32); transcript files renamed to `sidekick-transcript`
   (#35).
 - 26.7.2.1 hotfix (#39): clearer `setup.sh` API key prompt (asks for the variable name and rejects
   a pasted key), and the key no longer leaks into the error log.
@@ -72,7 +74,7 @@ credential management beyond one-time setup.
 
 ### Setup fix (#66)
 
-`setup.sh` prints `claude mcp add gemini-bridge -s user …` with the server name first. Without the
+`setup.sh` prints `claude mcp add sidekick -s user …` with the server name first. Without the
 name, `claude mcp add` registered the server as `python3` and it failed to connect.
 
 ### Repository file tools (#68)
@@ -135,9 +137,9 @@ every listed URL comes from the metadata (#82). Resolving costs no Gemini tokens
 
 Repackaged as a Claude Code plugin, `sidekick`, installed with `/plugin marketplace add` +
 `/plugin install` instead of a manual clone and `claude mcp add`. `setup.sh` is gone;
-`/sidekick:setup` (a slash command) drives a new `gemini-bridge-setup status|write` CLI that
+`/sidekick:setup` (a slash command) drives a new `sidekick-setup status|write` CLI that
 never parses free text as shell, JSON or Python. The server launches with
-`uv run --frozen --project ${CLAUDE_PLUGIN_ROOT} gemini-bridge`, using a venv at
+`uv run --frozen --project ${CLAUDE_PLUGIN_ROOT} sidekick`, using a venv at
 `${CLAUDE_PLUGIN_DATA}/venv` that `uv` builds once and reuses across restarts and version
 bumps. Project-relative paths (`transcript_dir`, `artifacts_dir`, the file-tools sandbox root)
 now anchor to `CLAUDE_PROJECT_DIR`, falling back to the working directory when Claude Code
@@ -169,7 +171,7 @@ name already gives a fresh conversation, before closing or narrowing the issue.
 The default `transcript_dir` is already project-local (`./session-summaries`, relative to the
 project root — #102), so this now matters mainly when `transcript_dir` is set to an absolute
 path, or to switch directories mid-session. Changing it today means editing
-`~/.config/gemini-bridge/config.json` and restarting the MCP server.
+`~/.config/sidekick/config.json` and restarting the MCP server.
 
 ---
 

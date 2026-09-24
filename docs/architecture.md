@@ -11,7 +11,7 @@ graph TD
     M --> WS["build_workspace(config, cwd)<br/>workspace.py"]
     M --> SRV["build_server(client, transcript, workspace)<br/>server.py"]
 
-    CFG --> JSON["~/.config/gemini-bridge/config.json"]
+    CFG --> JSON["~/.config/sidekick/config.json"]
     AUTH --> CRED["google.auth Credentials<br/>or API key"]
 
     WS --> SB["Sandbox<br/>sandbox.py"]
@@ -48,7 +48,7 @@ from `guide.py`.
 
 ## Module Map
 
-Package root: `src/gemini_bridge/`.
+Package root: `src/sidekick/`.
 
 | Module | Responsibility | Depends on (in-package) |
 |---|---|---|
@@ -70,7 +70,7 @@ Package root: `src/gemini_bridge/`.
 | `guide.py` | Text only: the short server instructions (kept under `INSTRUCTIONS_BUDGET` = 2000 characters) and the `gemini_help` topics, all derived from the live capability rows, deny-list, caps and web support (#74, #78) | tools, tools/base, file_tools, sandbox, web_tools, workspace, transcript |
 | `server.py` | Builds `FastMCP` with the guide's instructions and registers all 7 tools | client, guide, tools, transcript, workspace |
 
-Tools package: `src/gemini_bridge/tools/`.
+Tools package: `src/sidekick/tools/`.
 
 | Module | Responsibility | Depends on (in-package) |
 |---|---|---|
@@ -117,7 +117,7 @@ Tools package: `src/gemini_bridge/tools/`.
 12. If the tool asked for an artifact, `ArtifactStore.save()` writes it and the reply gets
     the artifact path. A failed save adds a notice; the answer is still returned.
 13. The reply goes back to Claude Code as the tool result. Errors come back as
-    `[gemini-bridge error] ...` strings, never as exceptions.
+    `[sidekick error] ...` strings, never as exceptions.
 
 ```mermaid
 sequenceDiagram
@@ -180,7 +180,7 @@ tool's system prompt persona stays fixed within its sessions.
 ## Transcript Lifecycle
 
 - **File created:** on the first append, named with the server startup timestamp
-- **File path:** `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`
+- **File path:** `{transcript_dir}/YYYYMMDD-HHMM-sidekick-transcript.md`
   (`transcript_dir` defaults to `./session-summaries`)
 - **Appended:** after every successful generating call, and after a failed one that had
   already made tool calls

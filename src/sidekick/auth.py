@@ -1,5 +1,5 @@
 """
-gemini_bridge/auth.py
+sidekick/auth.py
 ---------------------
 Credential loading for all supported authentication methods.
 
@@ -38,7 +38,7 @@ import google.auth.credentials
 import google.auth.exceptions
 from google.oauth2 import service_account
 
-from gemini_bridge.config import AuthConfig, ConfigError
+from sidekick.config import AuthConfig, ConfigError
 
 _VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -115,7 +115,7 @@ def _load_env(auth_config: AuthConfig) -> google.auth.credentials.Credentials:
 def _load_keychain(auth_config: AuthConfig) -> google.auth.credentials.Credentials:
     """Load service account JSON from Apple Keychain (macOS only)."""
     # model_validator guarantees non-None when method="keychain"; or-defaults are a safety net
-    service = auth_config.keychain_service or "gemini-bridge"
+    service = auth_config.keychain_service or "sidekick"
     account = auth_config.keychain_account or "vertex-sa"
     try:
         result = subprocess.run(
@@ -179,7 +179,7 @@ def _load_api_key(auth_config: AuthConfig) -> str:
             'Fix: set api_key_env to the variable name (e.g. "GEMINI_API_KEY"), '
             "then export that variable:\n"
             "  export GEMINI_API_KEY=<your-key>\n"
-            "Edit ~/.config/gemini-bridge/config.json or run /sidekick:setup in Claude Code."
+            "Edit ~/.config/sidekick/config.json or run /sidekick:setup in Claude Code."
         )
     key = os.environ.get(env_var, "").strip()
     if not key:

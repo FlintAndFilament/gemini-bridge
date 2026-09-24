@@ -1,5 +1,5 @@
 """
-gemini_bridge/guide.py
+sidekick/guide.py
 ------------------------
 What the calling Claude session is told about this server: the short instructions sent on
 connect, and the full detail gemini_help returns on demand.
@@ -27,7 +27,7 @@ import re
 from collections.abc import Sequence
 from typing import Optional
 
-from gemini_bridge.file_tools import (
+from sidekick.file_tools import (
     GLOB_MAX_RESULTS,
     GREP_MAX_MATCHES,
     GREP_TIMEOUT_SECONDS,
@@ -35,12 +35,12 @@ from gemini_bridge.file_tools import (
     READ_MAX_BYTES,
     READ_TOOL_NAMES,
 )
-from gemini_bridge.sandbox import DEFAULT_DENY, WALK_SKIP_DIRS
-from gemini_bridge.tools import CAPABILITIES, HELP_TOOL_NAME, LIST_MODELS_TOOL_NAME
-from gemini_bridge.tools.base import capability_hint, session_param_hint
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.web_tools import WEB_TOOL_NAMES
-from gemini_bridge.workspace import Workspace
+from sidekick.sandbox import DEFAULT_DENY, WALK_SKIP_DIRS
+from sidekick.tools import CAPABILITIES, HELP_TOOL_NAME, LIST_MODELS_TOOL_NAME
+from sidekick.tools.base import capability_hint, session_param_hint
+from sidekick.transcript import TranscriptWriter
+from sidekick.web_tools import WEB_TOOL_NAMES
+from sidekick.workspace import Workspace
 
 # Claude Code truncates server instructions at about 2048 characters (#78). Stay under it
 # with margin, because the cap is observed rather than documented.
@@ -168,7 +168,7 @@ def server_instructions(
     tools.append(f"- {HELP_TOOL_NAME}: full detail on demand.")
     return "\n\n".join(
         [
-            "gemini-bridge: a second opinion from Google Gemini. Each generating tool keeps "
+            "sidekick: a second opinion from Google Gemini. Each generating tool keeps "
             "its own conversation.",
             "\n".join(tools),
             _short_access(workspace),

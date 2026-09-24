@@ -1,5 +1,5 @@
 """
-gemini_bridge/tools/architect.py
+sidekick/tools/architect.py
 ---------------------------------
 MCP tool: gemini_architect — system design and tradeoff analysis.
 
@@ -22,9 +22,9 @@ from typing import Annotated, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.config import ThinkingLevel
-from gemini_bridge.tools.base import (
+from sidekick.client import GeminiClient
+from sidekick.config import ThinkingLevel
+from sidekick.tools.base import (
     ArtifactMode,
     ToolCapability,
     ToolResult,
@@ -34,8 +34,8 @@ from gemini_bridge.tools.base import (
     session_param_hint,
     tool_annotations,
 )
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace
 
 _SYSTEM_PROMPT = (
     "You are a software architecture advisor working alongside Claude, another AI. "

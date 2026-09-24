@@ -3,13 +3,13 @@
 import httpx
 import pytest
 
-from gemini_bridge.sources import (
+from sidekick.sources import (
     FOOTER_HEADING,
     TYPED_URL_CAUTION,
     resolve_redirects,
     sources_footer,
 )
-from gemini_bridge.tool_loop import ToolCallRecord
+from sidekick.tool_loop import ToolCallRecord
 
 REDIRECT = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIabc"
 REDIRECT_2 = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIdef"
@@ -136,7 +136,7 @@ class TestFooter:
         assert "https://s49.test" in sources_footer([_search(*many)], limit=None)
 
     def test_cap_is_raised_past_ten(self) -> None:
-        from gemini_bridge.sources import MAX_SOURCES
+        from sidekick.sources import MAX_SOURCES
 
         assert MAX_SOURCES >= 25
 

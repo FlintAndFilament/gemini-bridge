@@ -1,5 +1,5 @@
 """
-gemini_bridge/setup_cli.py
+sidekick/setup_cli.py
 ---------------------------
 Non-interactive setup for the sidekick plugin (#102). Replaces setup.sh.
 
@@ -24,8 +24,8 @@ from typing import Any, Optional
 
 from pydantic import ValidationError
 
-from gemini_bridge.auth import AuthError, _load_keychain, _looks_like_api_key
-from gemini_bridge.config import CONFIG_PATH, AuthConfig, Config
+from sidekick.auth import AuthError, _load_keychain, _looks_like_api_key
+from sidekick.config import CONFIG_PATH, AuthConfig, Config
 
 DEFAULTS: dict[str, Any] = {
     "auth_method": "adc",
@@ -34,7 +34,7 @@ DEFAULTS: dict[str, Any] = {
     "default_thinking": "medium",
     "default_model": "",
     "transcript_dir": "./session-summaries",
-    "keychain_service": "gemini-bridge",
+    "keychain_service": "sidekick",
     "keychain_account": "vertex-sa",
     "api_key_env": "GEMINI_API_KEY",
 }
@@ -258,7 +258,7 @@ def write(path: Path, args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="gemini-bridge-setup")
+    p = argparse.ArgumentParser(prog="sidekick-setup")
     sub = p.add_subparsers(dest="command", required=True)
     for name in ("status", "write"):
         s = sub.add_parser(name)

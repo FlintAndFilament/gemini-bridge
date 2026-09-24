@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge.models — backend detection, shortlists, schema hints, chat filter.
+"""Tests for sidekick.models — backend detection, shortlists, schema hints, chat filter.
 
 The critical case is is_chat_capable: image/tts models ALSO report 'generateContent',
 so a naive `'generateContent' in supported_actions` filter is wrong. These tests pin the
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gemini_bridge import models
+from sidekick import models
 
 
 def _meta(name: str, actions=("generateContent", "countTokens")) -> SimpleNamespace:

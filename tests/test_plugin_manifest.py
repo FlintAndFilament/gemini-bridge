@@ -34,7 +34,7 @@ def test_server_launches_frozen_with_the_venv_in_plugin_data() -> None:
     project_index = server["args"].index("--project")
     assert server["args"][project_index + 1] == "${CLAUDE_PLUGIN_ROOT}"
     assert "--directory" not in server["args"]
-    assert server["args"][-1] == "gemini-bridge"
+    assert server["args"][-1] == "sidekick"
     assert server["env"]["UV_PROJECT_ENVIRONMENT"] == "${CLAUDE_PLUGIN_DATA}/venv"
 
 
@@ -44,8 +44,8 @@ def test_lockfile_is_committed() -> None:
 
 def test_setup_command_drives_the_cli_and_never_asks_for_the_key() -> None:
     text = (ROOT / "commands" / "setup.md").read_text()
-    assert "gemini-bridge-setup status" in text
-    assert "gemini-bridge-setup write" in text
+    assert "sidekick-setup status" in text
+    assert "sidekick-setup write" in text
     assert "AskUserQuestion" in text
     assert "UV_PROJECT_ENVIRONMENT" in text  # same venv as the server, not a second one
     assert "never ask for the key" in text.lower()

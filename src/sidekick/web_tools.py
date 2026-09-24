@@ -1,5 +1,5 @@
 """
-gemini_bridge/web_tools.py
+sidekick/web_tools.py
 ---------------------------
 Gemini's server-side web tools, and the rule that keeps them away from write access.
 

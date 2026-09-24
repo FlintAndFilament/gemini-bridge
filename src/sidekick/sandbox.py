@@ -1,5 +1,5 @@
 """
-gemini_bridge/sandbox.py
+sidekick/sandbox.py
 -------------------------
 Path confinement for every file operation Gemini requests.
 

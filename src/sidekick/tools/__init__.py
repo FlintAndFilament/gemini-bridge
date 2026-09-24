@@ -1,5 +1,5 @@
 """
-gemini_bridge/tools/__init__.py
+sidekick/tools/__init__.py
 ---------------------------------
 Tool package root — re-exports all MCP tool registration callables.
 
@@ -15,21 +15,21 @@ Imports:  tools/ask.py, tools/brainstorm.py, tools/review.py, tools/debug.py, to
           tools/list_models.py, tools/help.py
 """
 
-from gemini_bridge.tools.architect import CAPABILITY as CAPABILITY_ARCHITECT
-from gemini_bridge.tools.architect import register as register_architect
-from gemini_bridge.tools.ask import CAPABILITY as CAPABILITY_ASK
-from gemini_bridge.tools.ask import register as register_ask
-from gemini_bridge.tools.base import ToolCapability
-from gemini_bridge.tools.brainstorm import CAPABILITY as CAPABILITY_BRAINSTORM
-from gemini_bridge.tools.brainstorm import register as register_brainstorm
-from gemini_bridge.tools.debug import CAPABILITY as CAPABILITY_DEBUG
-from gemini_bridge.tools.debug import register as register_debug
-from gemini_bridge.tools.help import HELP_TOOL_NAME
-from gemini_bridge.tools.help import register as register_help
-from gemini_bridge.tools.list_models import LIST_MODELS_TOOL_NAME
-from gemini_bridge.tools.list_models import register as register_list_models
-from gemini_bridge.tools.review import CAPABILITY as CAPABILITY_REVIEW
-from gemini_bridge.tools.review import register as register_review
+from sidekick.tools.architect import CAPABILITY as CAPABILITY_ARCHITECT
+from sidekick.tools.architect import register as register_architect
+from sidekick.tools.ask import CAPABILITY as CAPABILITY_ASK
+from sidekick.tools.ask import register as register_ask
+from sidekick.tools.base import ToolCapability
+from sidekick.tools.brainstorm import CAPABILITY as CAPABILITY_BRAINSTORM
+from sidekick.tools.brainstorm import register as register_brainstorm
+from sidekick.tools.debug import CAPABILITY as CAPABILITY_DEBUG
+from sidekick.tools.debug import register as register_debug
+from sidekick.tools.help import HELP_TOOL_NAME
+from sidekick.tools.help import register as register_help
+from sidekick.tools.list_models import LIST_MODELS_TOOL_NAME
+from sidekick.tools.list_models import register as register_list_models
+from sidekick.tools.review import CAPABILITY as CAPABILITY_REVIEW
+from sidekick.tools.review import register as register_review
 
 # Registration order, and the order the capability rows are advertised in.
 CAPABILITIES: tuple[ToolCapability, ...] = (

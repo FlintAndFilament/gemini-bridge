@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge/tools — tool registration and call_gemini() helper."""
+"""Tests for sidekick/tools — tool registration and call_gemini() helper."""
 
 import asyncio
 from pathlib import Path
@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from google.genai import types
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.config import Config
-from gemini_bridge.tools.base import call_gemini, model_param_hint
-from gemini_bridge.transcript import TranscriptWriter
+from sidekick.client import GeminiClient
+from sidekick.config import Config
+from sidekick.tools.base import call_gemini, model_param_hint
+from sidekick.transcript import TranscriptWriter
 
 
 def _make_client() -> GeminiClient:
@@ -45,7 +45,7 @@ def _register_all_tools(tmp_path: object) -> object:
 
     from mcp.server.fastmcp import FastMCP
 
-    from gemini_bridge.tools import (
+    from sidekick.tools import (
         register_architect,
         register_ask,
         register_brainstorm,
@@ -118,7 +118,7 @@ class TestCallGemini:
             prompt="Hello",
             thinking="none",
         )
-        assert result.startswith("[gemini-bridge error]")
+        assert result.startswith("[sidekick error]")
 
     async def test_appends_to_transcript_on_success(self, tmp_path: Path) -> None:
         client = _make_client()
@@ -139,14 +139,14 @@ class TestCallGemini:
         assert "Check this code." in content
 
     async def test_fallback_to_default_model_on_503(self, tmp_path: Path) -> None:
-        from gemini_bridge.client import FALLBACK_MODEL
+        from sidekick.client import FALLBACK_MODEL
 
         client = _make_client()
         busy = Exception("503 UNAVAILABLE model overloaded")
         gen = _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fallback answer")])
 
         transcript = _make_transcript(tmp_path)
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
@@ -157,7 +157,7 @@ class TestCallGemini:
                 thinking="low",
                 model="gemini-3.5-flash",  # busy model
             )
-        assert "[gemini-bridge notice]" in result
+        assert "[sidekick notice]" in result
         assert "gemini-3.5-flash" in result
         assert FALLBACK_MODEL in result
         assert "fallback answer" in result
@@ -167,7 +167,7 @@ class TestCallGemini:
         # Regression: when the caller omits `model`, the DEFAULT_MODEL is what gets tried.
         # If the default (!= fallback) overloads, we must still fall back — the guard must
         # compare against the model actually used, not FALLBACK_MODEL.
-        from gemini_bridge.client import DEFAULT_MODEL, FALLBACK_MODEL
+        from sidekick.client import DEFAULT_MODEL, FALLBACK_MODEL
 
         assert DEFAULT_MODEL != FALLBACK_MODEL, "test only meaningful when they differ"
 
@@ -176,7 +176,7 @@ class TestCallGemini:
         _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fallback answer")])
 
         transcript = _make_transcript(tmp_path)
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
@@ -187,7 +187,7 @@ class TestCallGemini:
                 thinking="low",
                 # model omitted → default is tried
             )
-        assert "[gemini-bridge notice]" in result
+        assert "[sidekick notice]" in result
         assert DEFAULT_MODEL in result  # names the model that was unavailable
         assert FALLBACK_MODEL in result
         assert "fallback answer" in result
@@ -199,7 +199,7 @@ class TestToolRegistration:
 
         from mcp.server.fastmcp import FastMCP
 
-        from gemini_bridge.tools import (
+        from sidekick.tools import (
             register_architect,
             register_ask,
             register_brainstorm,
@@ -240,7 +240,7 @@ class TestModelParamHint:
 
         from mcp.server.fastmcp import FastMCP
 
-        from gemini_bridge.tools import register_ask
+        from sidekick.tools import register_ask
 
         transcript = TranscriptWriter(str(tmp_path), datetime.now())
         mcp = FastMCP("dev")
@@ -255,7 +255,7 @@ class TestModelParamHint:
 
         from mcp.server.fastmcp import FastMCP
 
-        from gemini_bridge.tools import register_ask
+        from sidekick.tools import register_ask
 
         transcript = TranscriptWriter(str(tmp_path), datetime.now())
         mcp = FastMCP("vertex")
@@ -312,7 +312,7 @@ def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # t
 
 
 def _workspace(root: Path, **file_tools: object):  # type: ignore[no-untyped-def]
-    from gemini_bridge.workspace import build_workspace
+    from sidekick.workspace import build_workspace
 
     cfg = Config(auth={"method": "api_key"}, file_tools=file_tools or {})  # type: ignore[arg-type]
     return build_workspace(cfg, root)
@@ -351,7 +351,7 @@ class TestCapabilityMatrix:
 
         from mcp.server.fastmcp import FastMCP
 
-        from gemini_bridge.server import build_server
+        from sidekick.server import build_server
 
         client = _make_client_api_key()
         gen = _mock_generate(client, return_value=_text_response("ok"))
@@ -429,10 +429,10 @@ class TestToolCallsInTranscript:
             thinking="low",
             workspace=_workspace(tmp_path),
         )
-        assert result.startswith("[gemini-bridge error]")
+        assert result.startswith("[sidekick error]")
         content = transcript.path.read_text()
         assert "→ read_file(path='a.py')" in content
-        assert "[gemini-bridge error]" in content
+        assert "[sidekick error]" in content
 
 
 class TestArtifacts:
@@ -445,7 +445,7 @@ class TestArtifacts:
     ) -> str:
         from datetime import datetime
 
-        from gemini_bridge.server import build_server
+        from sidekick.server import build_server
 
         client = _make_client_api_key()
         _mock_generate(client, return_value=_text_response("the answer"))
@@ -464,7 +464,7 @@ class TestArtifacts:
         assert path.name.endswith("-gemini-architect-design-a-cache.md")
         assert "the answer" in path.read_text()
         assert reply.startswith("the answer")
-        assert f"[gemini-bridge] artifact saved: gemini-artifacts/{path.name}" in reply
+        assert f"[sidekick] artifact saved: gemini-artifacts/{path.name}" in reply
 
     async def test_review_saves_by_default(self, tmp_path: Path) -> None:
         await self._call(tmp_path, "gemini_review", {"content": "code", "question": "Is auth ok"})
@@ -491,7 +491,7 @@ class TestArtifacts:
         assert len(self._artifacts(tmp_path)) == 1
 
     async def test_save_failure_keeps_answer(self, tmp_path: Path, monkeypatch: object) -> None:
-        from gemini_bridge.artifacts import ArtifactStore
+        from sidekick.artifacts import ArtifactStore
 
         def boom(*a: object, **k: object) -> Path:
             raise OSError("disk full")
@@ -499,7 +499,7 @@ class TestArtifacts:
         monkeypatch.setattr(ArtifactStore, "save", boom)  # type: ignore[attr-defined]
         reply = await self._call(tmp_path, "gemini_review", {"content": "c"})
         assert reply.startswith("the answer")
-        assert "[gemini-bridge notice] artifact not saved: disk full" in reply
+        assert "[sidekick notice] artifact not saved: disk full" in reply
 
     def test_ask_and_debug_have_no_write_artifact_param(self, tmp_path: Path) -> None:
         mcp = _register_all_tools(tmp_path)
@@ -526,7 +526,7 @@ class TestFallbackAfterTools:
             side_effect=[_call_response(first_call, args)] + [busy] * 4 + [_text_response("fb")],
         )
         transcript = _make_transcript(tmp_path / "t")
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             result = await call_gemini(
                 client=client,
                 transcript=transcript,
@@ -542,7 +542,7 @@ class TestFallbackAfterTools:
 
     async def test_no_fallback_after_a_write(self, tmp_path: Path) -> None:
         result, log = await self._run(tmp_path, "write_file", {"path": "o.md", "content": "x"})
-        assert result.startswith("[gemini-bridge error]")
+        assert result.startswith("[sidekick error]")
         assert "not retried" in result
         assert (tmp_path / "o.md").read_text() == "x"
         assert "→ write_file" in log
@@ -550,7 +550,7 @@ class TestFallbackAfterTools:
     async def test_fallback_after_reads_is_marked(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("x\n")
         result, log = await self._run(tmp_path, "read_file", {"path": "a.py"})
-        assert "fb" in result and "[gemini-bridge notice]" in result
+        assert "fb" in result and "[sidekick notice]" in result
         assert "retried on fallback model" in log
 
 
@@ -566,7 +566,7 @@ class TestResolvedFallback:
         client.refresh_latest()
         busy = Exception("503 UNAVAILABLE")
         gen = _mock_generate(client, side_effect=[busy] * 4 + [_text_response("fb")])
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             result = await call_gemini(
                 client=client,
                 transcript=_make_transcript(tmp_path),

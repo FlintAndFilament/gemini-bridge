@@ -1,11 +1,11 @@
-"""Tests for gemini_bridge/workspace.py — composition of sandbox, file tools, and registries."""
+"""Tests for sidekick/workspace.py — composition of sandbox, file tools, and registries."""
 
 from pathlib import Path
 
 import pytest
 
-from gemini_bridge.config import Config
-from gemini_bridge.workspace import build_workspace
+from sidekick.config import Config
+from sidekick.workspace import build_workspace
 
 
 def _config(**kwargs: object) -> Config:
@@ -52,7 +52,7 @@ def test_artifacts_dir_defaults_inside_root(tmp_path: Path) -> None:
 def test_artifacts_dir_outside_root_rejected(tmp_path: Path) -> None:
     import pytest
 
-    from gemini_bridge.sandbox import SandboxError
+    from sidekick.sandbox import SandboxError
 
     with pytest.raises(SandboxError):
         build_workspace(_config(artifacts_dir="../elsewhere"), tmp_path)
@@ -61,7 +61,7 @@ def test_artifacts_dir_outside_root_rejected(tmp_path: Path) -> None:
 def test_artifacts_dir_in_denied_path_rejected(tmp_path: Path) -> None:
     import pytest
 
-    from gemini_bridge.sandbox import SandboxError
+    from sidekick.sandbox import SandboxError
 
     with pytest.raises(SandboxError):
         build_workspace(_config(artifacts_dir=".git/artifacts"), tmp_path)
@@ -98,17 +98,17 @@ class TestProjectRoot:
     """Plugin servers get CLAUDE_PROJECT_DIR; the cwd is not a documented contract (#102)."""
 
     def test_uses_claude_project_dir_when_it_is_a_directory(self, tmp_path: Path) -> None:
-        from gemini_bridge.workspace import project_root
+        from sidekick.workspace import project_root
 
         assert project_root({"CLAUDE_PROJECT_DIR": str(tmp_path)}) == tmp_path.resolve()
 
     def test_falls_back_to_cwd_when_unset(self) -> None:
-        from gemini_bridge.workspace import project_root
+        from sidekick.workspace import project_root
 
         assert project_root({}) == Path.cwd().resolve()
 
     @pytest.mark.parametrize("value", ["", "/no/such/dir/for/sidekick"])
     def test_falls_back_to_cwd_when_empty_or_missing(self, value: str) -> None:
-        from gemini_bridge.workspace import project_root
+        from sidekick.workspace import project_root
 
         assert project_root({"CLAUDE_PROJECT_DIR": value}) == Path.cwd().resolve()

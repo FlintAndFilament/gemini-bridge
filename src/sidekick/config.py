@@ -1,11 +1,11 @@
 """
-gemini_bridge/config.py
+sidekick/config.py
 -----------------------
-Load and validate configuration from ~/.config/gemini-bridge/config.json.
+Load and validate configuration from ~/.config/sidekick/config.json.
 
 Responsibilities:
   - Define Config, AuthConfig, and FileToolsConfig pydantic models
-  - Load config from the standard path (~/.config/gemini-bridge/config.json)
+  - Load config from the standard path (~/.config/sidekick/config.json)
   - Provide sensible defaults for all optional fields
   - Raise ConfigError with actionable messages on validation failure
 
@@ -28,9 +28,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from gemini_bridge.sandbox import DEFAULT_DENY
+from sidekick.sandbox import DEFAULT_DENY
 
-CONFIG_PATH: Path = Path.home() / ".config" / "gemini-bridge" / "config.json"
+CONFIG_PATH: Path = Path.home() / ".config" / "sidekick" / "config.json"
 
 ThinkingLevel = Literal["none", "low", "medium", "high"]
 AuthMethod = Literal["adc", "env", "keychain", "api_key"]
@@ -59,7 +59,7 @@ class AuthConfig(BaseModel):
     def apply_keychain_defaults(self) -> "AuthConfig":
         if self.method == "keychain":
             if self.keychain_service is None:
-                self.keychain_service = "gemini-bridge"
+                self.keychain_service = "sidekick"
             if self.keychain_account is None:
                 self.keychain_account = "vertex-sa"
         return self

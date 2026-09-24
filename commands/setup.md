@@ -1,6 +1,6 @@
 ---
 description: Set up sidekick (Gemini second opinion): check uv, choose auth, write the config
-allowed-tools: Bash(uv --version), Bash(UV_PROJECT_ENVIRONMENT=* uv run --frozen --quiet --project * gemini-bridge-setup *), AskUserQuestion
+allowed-tools: Bash(uv --version), Bash(UV_PROJECT_ENVIRONMENT=* uv run --frozen --quiet --project * sidekick-setup *), AskUserQuestion
 ---
 
 Set up the sidekick plugin. Keep every message short. Never ask for the key
@@ -10,7 +10,7 @@ never read, print or store its value.
 Run every setup command exactly like this, so it uses the server's own venv
 instead of a second one:
 
-    UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" gemini-bridge-setup <subcommand> …
+    UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" sidekick-setup <subcommand> …
 
 1. Run `uv --version`. If uv is missing, use AskUserQuestion once: "Install uv
    (Recommended)" or "Skip". On install, run Astral's official installer:
@@ -23,7 +23,7 @@ instead of a second one:
    still have the old one).
 2. Run:
 
-       UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" gemini-bridge-setup status
+       UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" sidekick-setup status
 
    Read `values` (saved answers), `auth_methods` and `checks`. If
    `checks.api_key_env_invalid` is true, tell the user their saved config has
@@ -52,7 +52,7 @@ instead of a second one:
 4. Run write with only the answers actually given, quoting every value in
    single quotes:
 
-       UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" gemini-bridge-setup write --auth-method '…' [--project '…'] [--location '…'] [--thinking '…'] [--default-model '…'] [--transcript-dir '…'] [--keychain-service '…'] [--keychain-account '…'] [--api-key-env '…']
+       UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv" uv run --frozen --quiet --project "${CLAUDE_PLUGIN_ROOT}" sidekick-setup write --auth-method '…' [--project '…'] [--location '…'] [--thinking '…'] [--default-model '…'] [--transcript-dir '…'] [--keychain-service '…'] [--keychain-account '…'] [--api-key-env '…']
 
    On `"ok": false`, show `error` and offer to retry from step 3. Otherwise
    show any `warnings`, and show `backup`'s path if it is non-null.

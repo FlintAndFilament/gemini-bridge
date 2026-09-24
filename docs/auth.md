@@ -1,7 +1,7 @@
 # Authentication
 
 sidekick supports four auth methods, set by `auth.method` in
-`~/.config/gemini-bridge/config.json` (see [configuration.md](configuration.md)):
+`~/.config/sidekick/config.json` (see [configuration.md](configuration.md)):
 
 | Method | Backend | Needs a GCP project | Web access (`web=true`) |
 |---|---|---|---|
@@ -13,7 +13,7 @@ sidekick supports four auth methods, set by `auth.method` in
 The three Vertex methods only differ in where the credentials come from; they share the same
 models, `project`/`location` settings and IAM role (`roles/aiplatform.user`). **Web access needs
 `api_key`**: on Vertex the bridge drops `web=true`, answers without the web and says so in a
-`[gemini-bridge notice]` (the Gemini API flag that lets web tools share a request with the
+`[sidekick notice]` (the Gemini API flag that lets web tools share a request with the
 bridge's file tools is Developer-API only).
 
 Credentials are loaded once, at server startup. A failure stops the server and is written to the
@@ -99,7 +99,7 @@ subsequent Claude Code launch.
 **Setup steps:**
 1. Create or download a service account key in GCP IAM → Service Accounts → Keys
 2. Grant the SA `roles/aiplatform.user` on your project
-3. Store the JSON file in a secure location (e.g. `~/.config/gemini-bridge/sa-key.json`, mode 600)
+3. Store the JSON file in a secure location (e.g. `~/.config/sidekick/sa-key.json`, mode 600)
 4. Export the env var in your shell profile
 5. Run `/sidekick:setup` and choose `env`
 
@@ -125,7 +125,7 @@ Store the service account JSON in Apple Keychain. The server reads it once at st
 **One-time setup — store the SA JSON:**
 ```bash
 security add-generic-password \
-  -s "gemini-bridge" \
+  -s "sidekick" \
   -a "vertex-sa" \
   -w "$(cat /path/to/sa-key.json)"
 rm /path/to/sa-key.json   # remove disk copy immediately
@@ -138,7 +138,7 @@ rm /path/to/sa-key.json   # remove disk copy immediately
 {
   "auth": {
     "method": "keychain",
-    "keychain_service": "gemini-bridge",
+    "keychain_service": "sidekick",
     "keychain_account": "vertex-sa"
   }
 }
