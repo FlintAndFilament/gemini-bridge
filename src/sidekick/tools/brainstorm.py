@@ -1,10 +1,10 @@
 """
 sidekick/tools/brainstorm.py
 ----------------------------------
-MCP tool: gemini_brainstorm — divergent ideation and devil's advocate thinking.
+MCP tool: brainstorm — divergent ideation and devil's advocate thinking.
 
 Responsibilities:
-  - Register the gemini_brainstorm MCP tool with the server
+  - Register the brainstorm MCP tool with the server
   - Accept topic + optional context and thinking level
   - Return Gemini's divergent, challenge-first brainstorming response
 
@@ -44,7 +44,7 @@ _SYSTEM_PROMPT = (
     "Be concise."
 )
 
-_TOOL_NAME = "gemini_brainstorm"
+_TOOL_NAME = "brainstorm"
 # Capability row (#68): read + write_file.
 _WRITE = True
 
@@ -71,7 +71,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_brainstorm with the MCP server."""
+    """Register brainstorm with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -85,7 +85,7 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_brainstorm(
+    async def brainstorm(
         topic: Annotated[str, Field(description="The topic or problem to brainstorm about")],
         context: Annotated[
             str,

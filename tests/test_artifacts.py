@@ -28,24 +28,24 @@ def test_slugify(text: str, expected: str) -> None:
 
 
 def _store(tmp_path: Path) -> ArtifactStore:
-    return ArtifactStore(tmp_path / "gemini-artifacts", clock=lambda: FIXED)
+    return ArtifactStore(tmp_path / "sidekick-artifacts", clock=lambda: FIXED)
 
 
 def test_save_names_file(tmp_path: Path) -> None:
     path = _store(tmp_path).save(
-        "gemini_architect", "Design a cache", "body", model="m", session="s"
+        "architect", "Design a cache", "body", model="m", session="s"
     )
     assert (
-        path == tmp_path / "gemini-artifacts" / "20260917-2205-gemini-architect-design-a-cache.md"
+        path == tmp_path / "sidekick-artifacts" / "20260917-2205-architect-design-a-cache.md"
     )
 
 
 def test_save_writes_header_and_body(tmp_path: Path) -> None:
     path = _store(tmp_path).save(
-        "gemini_review", "Check auth", "The review.", model="gemini-3.8-flash", session="pr-12"
+        "review", "Check auth", "The review.", model="gemini-3.8-flash", session="pr-12"
     )
     text = path.read_text()
-    assert text.startswith("# gemini_review — Check auth\n")
+    assert text.startswith("# review — Check auth\n")
     assert "- model: gemini-3.8-flash" in text
     assert "- session: pr-12" in text
     assert "- saved: 2026-09-17 22:05" in text
@@ -54,15 +54,15 @@ def test_save_writes_header_and_body(tmp_path: Path) -> None:
 
 def test_collisions_get_numeric_suffix(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    paths = [store.save("gemini_review", "same", str(i), model="m", session="s") for i in range(3)]
+    paths = [store.save("review", "same", str(i), model="m", session="s") for i in range(3)]
     assert [p.name for p in paths] == [
-        "20260917-2205-gemini-review-same.md",
-        "20260917-2205-gemini-review-same-2.md",
-        "20260917-2205-gemini-review-same-3.md",
+        "20260917-2205-review-same.md",
+        "20260917-2205-review-same-2.md",
+        "20260917-2205-review-same-3.md",
     ]
     assert paths[0].read_text().rstrip().endswith("0")
 
 
 def test_title_uses_first_line_only(tmp_path: Path) -> None:
-    path = _store(tmp_path).save("gemini_review", "line one\nline two", "b", model="m", session="s")
-    assert path.read_text().startswith("# gemini_review — line one\n")
+    path = _store(tmp_path).save("review", "line one\nline two", "b", model="m", session="s")
+    assert path.read_text().startswith("# review — line one\n")

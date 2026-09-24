@@ -8,7 +8,7 @@ All tool calls within one Claude Code session (one server process) append to the
 **Per-exchange format:**
 
 ```markdown
-## [14:32:07] gemini_review — thinking: medium | session: default
+## [14:32:07] review — thinking: medium | session: default
 
 **Prompt:**
 Review src/sidekick/client.py, the session cache in particular.
@@ -30,13 +30,13 @@ Two problems, in order of severity...
   `default_thinking`), and the `session_name`. The model is not recorded here; artifacts name it
   in their header.
 - **Prompt:** the text sent to Gemini. Tools with two inputs combine them, e.g.
-  `gemini_review` appends `Focus: <question>`, `gemini_architect` `Question: …`,
-  `gemini_brainstorm` and `gemini_debug` `Context: …`.
+  `review` appends `Focus: <question>`, `architect` `Question: …`,
+  `brainstorm` and `debug` `Context: …`.
 - **Tool calls:** present only when Gemini called a tool. One line per call, in order (see below).
 - **Response:** Gemini's answer, followed by the full sources footer when the call was
   web-grounded.
 
-Only the five generating tools write entries. `gemini_list_models` and `gemini_help` write
+Only the five generating tools write entries. `list_models` and `help` write
 nothing.
 
 ## Tool-call lines
@@ -87,7 +87,7 @@ that could not be resolved keeps its redirect link, marked `(unresolved Google r
   notice, and the `artifact saved` / `artifact not saved` line.
 - Failed calls in which Gemini made no tool call. A call that fails after at least one tool call
   is logged, with the error text as its response, so the calls it made are still on record.
-- Anything from `gemini_list_models` or `gemini_help`.
+- Anything from `list_models` or `help`.
 
 ## Session boundaries
 
@@ -95,7 +95,7 @@ A new transcript file is created each time the MCP server starts — i.e., each 
 Code starts or restarts. Consecutive Claude Code sessions produce separate files.
 
 This means:
-- Calling `gemini_brainstorm` then `gemini_review` in one Claude Code session → same file
+- Calling `brainstorm` then `review` in one Claude Code session → same file
 - Restarting Claude Code → new file, new timestamp, fresh sessions
 - Two servers started in the same minute with the same `transcript_dir` (e.g. two Claude Code
   windows in one project) share a file name, so both append to one file
@@ -122,7 +122,7 @@ projects — the server reads `CLAUDE_PROJECT_DIR` from Claude Code.
 To override the default and collect all transcripts in one place, edit
 `~/.config/sidekick/config.json` and restart Claude Code:
 ```json
-{"transcript_dir": "~/gemini-transcripts"}
+{"transcript_dir": "~/sidekick-transcripts"}
 ```
 
 ## Write failure behavior

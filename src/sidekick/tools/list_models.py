@@ -1,10 +1,10 @@
 """
 sidekick/tools/list_models.py
 ------------------------------------
-MCP tool: gemini_list_models — the authoritative, live, backend-scoped model list.
+MCP tool: list_models — the authoritative, live, backend-scoped model list.
 
 Responsibilities:
-  - Register the gemini_list_models MCP tool
+  - Register the list_models MCP tool
   - Fetch the live catalog via GeminiClient.list_models(), filter to chat-capable models
   - Render a compact table (id, label, (default)/(alias) markers) headed by the active backend
   - Degrade gracefully to the curated static shortlist when the live list is unavailable
@@ -31,7 +31,7 @@ from sidekick.client import ClientError, GeminiClient
 from sidekick.tools.base import ToolResult
 from sidekick.transcript import TranscriptWriter
 
-_TOOL_NAME = "gemini_list_models"
+_TOOL_NAME = "list_models"
 # Exported so server.py can say, truthfully, that this one call writes nothing (#74).
 LIST_MODELS_TOOL_NAME = _TOOL_NAME
 
@@ -133,7 +133,7 @@ def render_model_list(client: GeminiClient, backend: str) -> str:
 
 
 def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -> None:
-    """Register gemini_list_models with the MCP server.
+    """Register list_models with the MCP server.
 
     `transcript` is accepted for registration-signature parity with the other tools but is
     unused — this is a metadata call, not an inference, so it is not logged to transcripts.
@@ -151,7 +151,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
             openWorldHint=True,  # it queries the live backend
         )
     )
-    def gemini_list_models(
+    def list_models(
         refresh: Annotated[
             bool,
             Field(
@@ -164,7 +164,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
 
         Returns a chat-only, backend-scoped catalog (image/tts/audio/embedding/live models are
         excluded), marking the server default and any '-latest' aliases. Use this to discover
-        valid values for the `model=` parameter accepted by every gemini_* tool. Falls back to
+        valid values for the `model=` parameter accepted by every sidekick tool. Falls back to
         a curated shortlist if the live catalog cannot be fetched.
         """
         if refresh or "text" not in cache:

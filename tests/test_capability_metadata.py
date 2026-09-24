@@ -25,8 +25,8 @@ from sidekick.workspace import Workspace, build_workspace
 from tests.test_tools import _text_response
 
 READ_TOOL_NAMES = ("list_dir", "glob", "grep", "read_file")
-WRITE_TOOLS = ("gemini_architect", "gemini_brainstorm", "gemini_review")
-READ_ONLY_TOOLS = ("gemini_ask", "gemini_debug")
+WRITE_TOOLS = ("architect", "brainstorm", "review")
+READ_ONLY_TOOLS = ("ask", "debug")
 GENERATING_TOOLS = WRITE_TOOLS + READ_ONLY_TOOLS
 
 
@@ -41,7 +41,7 @@ def _workspace(root: Path, **file_tools: object) -> Workspace:
 
 
 def _full(workspace: Optional[Workspace], transcript: Optional[TranscriptWriter] = None) -> str:
-    """Every gemini_help topic: the detail that no longer fits the instructions (#78)."""
+    """Every help topic: the detail that no longer fits the instructions (#78)."""
     return help_text(workspace, transcript)
 
 
@@ -156,7 +156,7 @@ class TestRegisteredDescriptions:
 
     def test_list_models_is_not_given_a_file_hint(self, tmp_path: Path) -> None:
         described = _tools(_server(tmp_path, _workspace(tmp_path)))[
-            "gemini_list_models"
+            "list_models"
         ].description
         assert "read_file" not in (described or "")
 
@@ -221,11 +221,11 @@ class TestAdvertisedTextMatchesWhatActuallyHitsDisk:
     """
 
     ARGS = {
-        "gemini_ask": {"prompt": "q"},
-        "gemini_debug": {"error": "boom"},
-        "gemini_brainstorm": {"topic": "t"},
-        "gemini_architect": {"description": "d"},
-        "gemini_review": {"content": "c"},
+        "ask": {"prompt": "q"},
+        "debug": {"error": "boom"},
+        "brainstorm": {"topic": "t"},
+        "architect": {"description": "d"},
+        "review": {"content": "c"},
     }
 
     def _call(self, tmp_path: Path, tool: str, workspace: object, **extra: object) -> FastMCP:
@@ -264,26 +264,26 @@ class TestAdvertisedTextMatchesWhatActuallyHitsDisk:
         root = tmp_path / "repo"
         root.mkdir()
         ws = _workspace(root, enabled=False)
-        mcp = self._call(tmp_path, "gemini_review", ws)
+        mcp = self._call(tmp_path, "review", ws)
         assert list(Path(ws.artifacts.directory).glob("*.md")), "no artifact was written"
-        described = (_tools(mcp)["gemini_review"].description or "").lower()
+        described = (_tools(mcp)["review"].description or "").lower()
         assert "artifact" in described
 
     def test_read_only_tools_write_no_artifact_and_promise_none(self, tmp_path: Path) -> None:
         root = tmp_path / "repo"
         root.mkdir()
         ws = _workspace(root)
-        mcp = self._call(tmp_path, "gemini_ask", ws)
+        mcp = self._call(tmp_path, "ask", ws)
         assert not Path(ws.artifacts.directory).exists()
-        assert "artifact" not in (_tools(mcp)["gemini_ask"].description or "").lower()
+        assert "artifact" not in (_tools(mcp)["ask"].description or "").lower()
 
     def test_brainstorm_opt_in_artifact_is_disclosed(self, tmp_path: Path) -> None:
         root = tmp_path / "repo"
         root.mkdir()
         ws = _workspace(root)
-        mcp = self._call(tmp_path, "gemini_brainstorm", ws, write_artifact=True)
+        mcp = self._call(tmp_path, "brainstorm", ws, write_artifact=True)
         assert list(Path(ws.artifacts.directory).glob("*.md")), "no artifact was written"
-        described = _tools(mcp)["gemini_brainstorm"].description or ""
+        described = _tools(mcp)["brainstorm"].description or ""
         assert "write_artifact=true" in described
 
     def test_server_instructions_name_brainstorm_as_an_artifact_writer(
@@ -293,7 +293,7 @@ class TestAdvertisedTextMatchesWhatActuallyHitsDisk:
         writes one."""
         text = _full(_workspace(tmp_path))
         sentence = next(s for s in text.split("\n") if "artifact" in s)
-        assert "gemini_brainstorm" in sentence
+        assert "brainstorm" in sentence
         assert "write_artifact=true" in sentence
 
     def test_server_instructions_disclose_the_transcript_path(self, tmp_path: Path) -> None:
@@ -404,7 +404,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
     def test_list_models_is_excluded_and_declared_silent(self, tmp_path: Path) -> None:
         """It takes a TranscriptWriter for signature parity but never writes one."""
         text = _full(_workspace(tmp_path))
-        assert "gemini_list_models and gemini_help write nothing" in text
+        assert "list_models and help write nothing" in text
 
     def test_no_artifact_promise_without_a_workspace(self) -> None:
         """call_gemini gates artifact saving on workspace is not None, so with no workspace
@@ -482,18 +482,18 @@ class TestInstructionsStayWellFormed:
         from sidekick.tools.base import ToolCapability
 
         caps = (
-            ToolCapability("gemini_ask", write=False, artifacts="never"),
-            ToolCapability("gemini_review", write=True, artifacts="opt-in"),
+            ToolCapability("ask", write=False, artifacts="never"),
+            ToolCapability("review", write=True, artifacts="opt-in"),
         )
         line = self._always_writes_line(caps, tmp_path)
         assert "-  " not in line
         assert "write_artifact=false" not in line  # nothing saves by default
-        assert "gemini_review saves the answer" in line
+        assert "review saves the answer" in line
 
     def test_no_artifact_line_when_no_tool_saves_one(self, tmp_path: Path) -> None:
         from sidekick.tools.base import ToolCapability
 
-        caps = (ToolCapability("gemini_ask", write=False, artifacts="never"),)
+        caps = (ToolCapability("ask", write=False, artifacts="never"),)
         with patch("sidekick.guide.CAPABILITIES", caps):
             text = _full(_workspace(tmp_path))
         assert "Markdown artifact" not in text
@@ -513,7 +513,7 @@ class TestListModelsAnnotations:
 
     def test_declared_read_only_and_non_destructive(self, tmp_path: Path) -> None:
         annotations = _tools(_server(tmp_path, _workspace(tmp_path)))[
-            "gemini_list_models"
+            "list_models"
         ].annotations
         assert annotations is not None
         assert annotations.readOnlyHint is True
@@ -532,7 +532,7 @@ class TestHelpText:
         return {k: v.get("description", "") for k, v in props.items()}
 
     def test_session_name_shares_one_base_on_every_tool(self, tmp_path: Path) -> None:
-        """Five hand-written copies drifted: gemini_ask's said 'v1: always default' long after
+        """Five hand-written copies drifted: ask's said 'v1: always default' long after
         session names started working. Every tool now starts from one shared base."""
         from sidekick.tools.base import _SESSION_BASE
 
@@ -545,7 +545,7 @@ class TestHelpText:
 
     @pytest.mark.parametrize("tool", READ_ONLY_TOOLS)
     def test_read_only_tools_do_not(self, tmp_path: Path, tool: str) -> None:
-        """gemini_ask can never write; telling Claude to abandon its session would cost
+        """ask can never write; telling Claude to abandon its session would cost
         conversation continuity for nothing (review finding)."""
         assert "writes" not in self._params(tmp_path, tool)["session_name"]
 
@@ -556,13 +556,13 @@ class TestHelpText:
 
     def test_tool_web_note_matches_the_server_advice(self, tmp_path: Path) -> None:
         """The tool's own description and the server instructions must give the same advice."""
-        described = _tools(_server(tmp_path, _workspace(tmp_path)))["gemini_review"].description
+        described = _tools(_server(tmp_path, _workspace(tmp_path)))["review"].description
         assert "new session_name" in (described or "")
 
     def test_session_name_description_is_accurate(self, tmp_path: Path) -> None:
         from sidekick.client import MAX_SESSIONS
 
-        text = self._params(tmp_path, "gemini_ask")["session_name"]
+        text = self._params(tmp_path, "ask")["session_name"]
         assert "always 'default'" not in text
         assert "per tool and per model" in text
         assert str(MAX_SESSIONS) in text
@@ -570,10 +570,10 @@ class TestHelpText:
     def test_sessions_really_are_keyed_by_name(self) -> None:
         """Cross-check the claim against the client, not just the string."""
         client = _client()
-        a = client.get_or_create_session(name="gemini_ask:one")
-        b = client.get_or_create_session(name="gemini_ask:two")
+        a = client.get_or_create_session(name="ask:one")
+        b = client.get_or_create_session(name="ask:two")
         assert a is not b
-        assert client.get_or_create_session(name="gemini_ask:one") is a
+        assert client.get_or_create_session(name="ask:one") is a
 
     def test_choosing_a_tool_lists_every_tool_with_its_own_description(
         self, tmp_path: Path

@@ -1,10 +1,10 @@
 """
 sidekick/tools/debug.py
 -----------------------------
-MCP tool: gemini_debug — hypothesis generation for bugs and failures.
+MCP tool: debug — hypothesis generation for bugs and failures.
 
 Responsibilities:
-  - Register the gemini_debug MCP tool with the server
+  - Register the debug MCP tool with the server
   - Accept error description + optional context and thinking level
   - Return Gemini's evidence-driven root cause hypotheses and diagnostic steps
 
@@ -43,7 +43,7 @@ _SYSTEM_PROMPT = (
     "Suggest specific diagnostic steps. Don't guess without basis — reason from what's shown."
 )
 
-_TOOL_NAME = "gemini_debug"
+_TOOL_NAME = "debug"
 # Capability row (#68): read-only: findings go back to Claude, not to disk.
 _WRITE = False
 
@@ -70,7 +70,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_debug with the MCP server."""
+    """Register debug with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -84,7 +84,7 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_debug(
+    async def debug(
         error: Annotated[
             str, Field(description="The error message, stack trace, or failure description")
         ],

@@ -2,11 +2,11 @@
 sidekick/guide.py
 ------------------------
 What the calling Claude session is told about this server: the short instructions sent on
-connect, and the full detail gemini_help returns on demand.
+connect, and the full detail help returns on demand.
 
 Responsibilities:
   - Build the server instructions within the client's size cap (#78)
-  - Build the gemini_help topics: tools, files, web, sessions, disk, and one per tool
+  - Build the help topics: tools, files, web, sessions, disk, and one per tool
   - Derive every row from what enforces it (#74) — the capability set exported by the tool
     modules, the live deny-list, the walk-skip set, the workspace's write cap, and the
     backend's web support — so the advertised surface cannot drift from the wired one
@@ -17,7 +17,7 @@ Design notes:
     fits INSTRUCTIONS_BUDGET in every config variant; anything longer lives in help_text()
   - Single Responsibility: text only; no registration, no config loading
 
-Used by:  server.py (instructions + gemini_help wiring)
+Used by:  server.py (instructions + help wiring)
 Imports:  tools/ (capabilities and hints), file_tools.py, sandbox.py, web_tools.py,
           workspace.py, transcript.py
 """
@@ -158,7 +158,7 @@ def server_instructions(
     """The instructions the MCP client sees on connect, kept within INSTRUCTIONS_BUDGET (#78).
 
     The tools, what they may read and write, the web rule, and the parameters that change
-    behavior. Everything else is one gemini_help call away. `transcript` is accepted for
+    behavior. Everything else is one help call away. `transcript` is accepted for
     signature parity with help_text(); its path is detail, not overview.
     """
     del transcript
@@ -180,7 +180,7 @@ def server_instructions(
     )
 
 
-# ---------------------------------------------------------------- gemini_help (the detail)
+# ---------------------------------------------------------------- help (the detail)
 
 
 _NO_ACCESS = (
@@ -340,7 +340,7 @@ def help_text(
     web_supported: bool = True,
     topic: Optional[str] = None,
 ) -> str:
-    """One gemini_help topic, or every topic when `topic` is None (#78)."""
+    """One help topic, or every topic when `topic` is None (#78)."""
     transcript_path = str(transcript.path) if transcript else "the configured transcript directory"
     sections = {
         "tools": _tools_topic(),

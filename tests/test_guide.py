@@ -1,9 +1,9 @@
-"""Tests for the short server instructions and the gemini_help detail behind them (#78).
+"""Tests for the short server instructions and the help detail behind them (#78).
 
 Claude Code keeps only about the first 2048 characters of a server's instructions and drops
 the rest silently. These tests pin two things: the instructions fit that budget in every
 config variant while still carrying the rules Claude must not miss, and everything cut from
-them is still reachable through gemini_help.
+them is still reachable through help.
 """
 
 import asyncio

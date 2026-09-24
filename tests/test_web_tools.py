@@ -152,9 +152,9 @@ class TestExclusionReachesTheRequest:
     """End to end: a web-enabled call must not declare write_file to the API."""
 
     ARGS = {
-        "gemini_brainstorm": {"topic": "t"},
-        "gemini_review": {"content": "c"},
-        "gemini_architect": {"description": "d"},
+        "brainstorm": {"topic": "t"},
+        "review": {"content": "c"},
+        "architect": {"description": "d"},
     }
 
     async def _declared(self, tmp_path: Path, tool: str, **extra: object) -> set[str]:
@@ -227,31 +227,31 @@ class TestAdvertisedWebRow:
         return tools[tool].description or ""
 
     @pytest.mark.parametrize(
-        "tool", ["gemini_ask", "gemini_debug", "gemini_review", "gemini_architect"]
+        "tool", ["ask", "debug", "review", "architect"]
     )
     def test_every_tool_advertises_the_web_row(self, tmp_path: Path, tool: str) -> None:
         assert "Web access:" in self._described(tmp_path, tool, enabled=False)
 
     def test_default_state_is_stated(self, tmp_path: Path) -> None:
-        assert "OFF by default" in self._described(tmp_path, "gemini_ask", enabled=False)
-        assert "ON by default" in self._described(tmp_path, "gemini_ask", enabled=True)
+        assert "OFF by default" in self._described(tmp_path, "ask", enabled=False)
+        assert "ON by default" in self._described(tmp_path, "ask", enabled=True)
 
     def test_write_capable_tools_advertise_the_exclusion(self, tmp_path: Path) -> None:
-        described = self._described(tmp_path, "gemini_review", enabled=False)
+        described = self._described(tmp_path, "review", enabled=False)
         assert "write_file is withheld" in described
 
     def test_read_only_tools_do_not_claim_a_withheld_write(self, tmp_path: Path) -> None:
-        """gemini_ask never had write_file; saying it is withheld would mislead."""
-        assert "withheld" not in self._described(tmp_path, "gemini_ask", enabled=False)
+        """ask never had write_file; saying it is withheld would mislead."""
+        assert "withheld" not in self._described(tmp_path, "ask", enabled=False)
 
     def test_no_withheld_claim_when_file_tools_are_off(self, tmp_path: Path) -> None:
         """With the kill switch on, write_file does not exist to withhold."""
-        described = self._described(tmp_path, "gemini_review", enabled=False, ws_enabled=False)
+        described = self._described(tmp_path, "review", enabled=False, ws_enabled=False)
         assert "Web access:" in described
         assert "withheld" not in described
 
     def test_untrusted_content_is_flagged_to_the_caller(self, tmp_path: Path) -> None:
-        assert "untrusted" in self._described(tmp_path, "gemini_ask", enabled=False)
+        assert "untrusted" in self._described(tmp_path, "ask", enabled=False)
 
 
 class TestGroundingIsRecorded:
@@ -630,7 +630,7 @@ class TestSourcesReachTheCaller:
         real = "https://www.python.org/downloads/"
         resolver = AsyncMock(return_value={REDIRECT: real})
         with patch("sidekick.tools.base.resolve_redirects", resolver):
-            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
+            result = await mcp.call_tool("ask", {"prompt": "p", "web": True})
         blocks = result[0] if isinstance(result, tuple) else result
         text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
         assert text.startswith("the answer")
@@ -668,7 +668,7 @@ class TestSourcesReachTheCaller:
         mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
         resolver = AsyncMock(return_value={REDIRECT: "https://www.python.org/downloads/"})
         with patch("sidekick.tools.base.resolve_redirects", resolver):
-            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
+            result = await mcp.call_tool("ask", {"prompt": "p", "web": True})
         blocks = result[0] if isinstance(result, tuple) else result
         text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
         assert TYPED_URL_CAUTION in text
@@ -698,7 +698,7 @@ class TestSourcesReachTheCaller:
             build_workspace(cfg, tmp_path),
         )
         with patch("httpx.AsyncClient") as http:
-            result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": False})
+            result = await mcp.call_tool("ask", {"prompt": "p", "web": False})
         blocks = result[0] if isinstance(result, tuple) else result
         assert "".join(getattr(b, "text", "") for b in blocks) == "plain"  # type: ignore[union-attr]
         http.assert_not_called()

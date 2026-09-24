@@ -55,7 +55,7 @@ VERTEX = "vertex"  # adc/env/keychain modes (Vertex AI)
 # Order matters — the first entry is presented first and is the default family.
 # Curated shortlists lead with the long-lived Gemini 3.x GA models. The Gemini 2.5 line
 # (gemini-2.5-flash/pro/flash-lite) retires 2026-10-16, so 2.5-flash is dropped from the curated
-# lists (still usable explicitly and shown by gemini_list_models); 2.5-pro is kept only on Vertex
+# lists (still usable explicitly and shown by list_models); 2.5-pro is kept only on Vertex
 # as its stable higher-capability Pro until it retires. Verified 2026-07-09.
 RECOMMENDED: dict[str, list[tuple[str, str]]] = {
     DEVELOPER_API: [
@@ -161,7 +161,7 @@ def schema_hint(backend: str, default_model: str, latest: Optional[dict[str, str
     """Build the one-line `model` param description for a backend.
 
     Leads with the bridge aliases (and, when resolved, the concrete id each maps to), then the
-    recommended ids, the active default, and a pointer to gemini_list_models.
+    recommended ids, the active default, and a pointer to list_models.
     """
     latest = latest or {}
     aliases = ", ".join(
@@ -172,7 +172,7 @@ def schema_hint(backend: str, default_model: str, latest: Optional[dict[str, str
         f"Optional Gemini model. Aliases that track the newest release: {aliases}. "
         f"Or any model id, e.g. {ids}. "
         f"Omit to use the server default ({default_model}). "
-        "Call gemini_list_models for the full, live list."
+        "Call list_models for the full, live list."
     )
 
 
