@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge/file_tools.py and the ToolRegistry in tool_loop.py."""
+"""Tests for sidekick/file_tools.py and the ToolRegistry in tool_loop.py."""
 
 from pathlib import Path
 from typing import Any
@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from google.genai import types
 
-from gemini_bridge import file_tools as ft
-from gemini_bridge.file_tools import FileTools, build_file_registry
-from gemini_bridge.sandbox import Sandbox
-from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry
+from sidekick import file_tools as ft
+from sidekick.file_tools import FileTools, build_file_registry
+from sidekick.sandbox import Sandbox
+from sidekick.tool_loop import ToolCallRecord, ToolRegistry
 
 
 @pytest.fixture

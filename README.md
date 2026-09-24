@@ -15,8 +15,6 @@ Gemini isn't limited to what Claude pastes into the call. It reads the repositor
 
 Five focused tools, each with its own persona, plus two utilities. Not a 37-tool Swiss Army knife.
 
-The plugin is called sidekick; the MCP server inside it keeps its original name, gemini-bridge. That name still appears in the config folder (`~/.config/gemini-bridge/`), log and transcript file names, and the `[gemini-bridge]` notices in replies.
-
 **Quick navigation:** [What it does](#what-it-does) | [How it works](#how-it-works) | [Prerequisites](#prerequisites) | [Quick start](#quick-start) | [Configuration](#configuration) | [Choosing a model](#choosing-a-model) | [Auth methods](#auth-methods) | [Thinking levels](#thinking-levels) | [Roadmap](#roadmap) | [Full documentation](#full-documentation)
 
 ---
@@ -55,7 +53,7 @@ See [docs/tools.md](docs/tools.md#web-access).
 
 **Artifacts.** `gemini_review` and `gemini_architect` save each answer to `gemini-artifacts/YYYYMMDD-HHMM-<tool>-<topic>.md` unless called with `write_artifact=false`. `gemini_brainstorm` saves only with `write_artifact=true`. The reply ends with the saved path.
 
-**Transcripts and logs.** Every exchange, including each file operation, web search and source, is appended to `{transcript_dir}/YYYYMMDD-HHMM-gemini-bridge-transcript.md`; see [docs/transcripts.md](docs/transcripts.md). Server logs go to `~/.config/gemini-bridge/logs/YYYYMMDD-gemini-bridge.log`; see [docs/logging.md](docs/logging.md).
+**Transcripts and logs.** Every exchange, including each file operation, web search and source, is appended to `{transcript_dir}/YYYYMMDD-HHMM-sidekick-transcript.md`; see [docs/transcripts.md](docs/transcripts.md). Server logs go to `~/.config/sidekick/logs/YYYYMMDD-sidekick.log`; see [docs/logging.md](docs/logging.md).
 
 ---
 
@@ -64,7 +62,7 @@ See [docs/tools.md](docs/tools.md#web-access).
 ```mermaid
 sequenceDiagram
     participant CC as Claude Code
-    participant S as sidekick (gemini-bridge MCP server)
+    participant S as sidekick (MCP server)
     participant G as Gemini API<br/>(Developer API or Vertex AI)
     participant R as Google redirect
 
@@ -78,7 +76,7 @@ sequenceDiagram
     G-->>S: answer + grounding metadata
     opt model overloaded (503/429)
         S->>G: retry once on the newest Flash-Lite
-        Note over S: prepend "[gemini-bridge notice]"
+        Note over S: prepend "[sidekick notice]"
     end
     opt web sources recorded
         S->>R: HEAD each redirect (not followed)
@@ -114,38 +112,9 @@ api_key users: export your key (e.g. `export GEMINI_API_KEY="…"`) in the shell
 or read it from the macOS Keychain with a launch alias ([docs/auth.md](docs/auth.md#method-4-api-key-google-ai-studio)).
 Windows: not yet tested end to end.
 
-## Migrating from the manual install
-
-If you installed gemini-bridge manually, before it was a plugin:
-
-```bash
-claude mcp remove gemini-bridge -s user
-python3 -m pip uninstall gemini-bridge
-```
-
-Your `~/.config/gemini-bridge/config.json` is kept. Then follow the Quick start above — `/sidekick:setup`
-reads that same file and offers its values as defaults.
-
-Tool names change too: `mcp__gemini-bridge__*` becomes `mcp__plugin_sidekick_gemini__*` (e.g.
-`mcp__gemini-bridge__gemini_ask` → `mcp__plugin_sidekick_gemini__gemini_ask`). If you have
-permission allowlists (`settings.json`, `.claude/settings.local.json`, or CLI `--allowedTools`)
-naming the old tools, update them to the new names or they'll silently stop matching.
-
-Restart Claude Code after installing. On next start you'll see startup entries in the log:
-
-```
-[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: starting — auth=keychain location=global default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
-[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: transcript → ~/dev/my-project/session-summaries/20260702-1750-gemini-bridge-transcript.md
-[gemini-bridge] 17:50:10 INFO  gemini_bridge.__main__: file tools enabled — sandbox root ~/dev/my-project — artifacts → ~/dev/my-project/gemini-artifacts
-```
-
-To check it from Claude, ask *"what can sidekick do?"*. The answer should name all seven tools and the web rules without reading any code.
-
----
-
 ## Configuration
 
-**Config file:** `~/.config/gemini-bridge/config.json` — created by `/sidekick:setup`, safe to edit by hand.
+**Config file:** `~/.config/sidekick/config.json` — created by `/sidekick:setup`, safe to edit by hand.
 
 | Field | Default | Description |
 |---|---|---|
@@ -160,7 +129,7 @@ To check it from Claude, ask *"what can sidekick do?"*. The answer should name a
 | `file_tools.max_write_bytes` | `262144` | Size cap for a single `write_file` |
 | `web_tools.enabled` | `false` | Default for each call's `web` argument. Grounding is billed per request; Developer API (API key) only |
 | `auth.method` | `adc` | `adc` · `env` · `keychain` · `api_key` |
-| `auth.keychain_service` | `gemini-bridge` | Keychain service name (`keychain` only) |
+| `auth.keychain_service` | `sidekick` | Keychain service name (`keychain` only) |
 | `auth.keychain_account` | `vertex-sa` | Keychain account name (`keychain` only) |
 | `auth.api_key_env` | `GEMINI_API_KEY` | Env var name holding the AI Studio key (`api_key` only; key is never stored in config) |
 
@@ -187,7 +156,7 @@ code or config change.
 | a concrete id, e.g. `gemini-3.5-flash` | exactly that model, never rewritten |
 
 - **Fallback:** on a terminal overload (503/429) the call is retried once on the newest
-  Flash-Lite, with a visible `[gemini-bridge notice]`.
+  Flash-Lite, with a visible `[sidekick notice]`.
 - **Offline:** if the model list can't be read at startup, the bridge uses pinned known-good
   defaults (`gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`) and logs a warning.
 - **Visibility:** the startup log and artifacts always name the concrete model (never an
@@ -219,7 +188,7 @@ Set the env var before starting Claude Code. Key file stays on disk — use only
 **Apple Keychain (recommended for DLP-sensitive environments, macOS only):**
 ```bash
 security add-generic-password \
-  -s "gemini-bridge" -a "vertex-sa" \
+  -s "sidekick" -a "vertex-sa" \
   -w "$(cat /path/to/sa-key.json)"
 rm /path/to/sa-key.json   # remove disk copy
 # Sets method: "keychain" in config
@@ -236,7 +205,7 @@ SA JSON loaded to memory at startup; zero disk artifact after store. `/sidekick:
 # instead if the key isn't found.
 export GEMINI_API_KEY="your-key-here"
 ```
-Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). No GCP project, no `gcloud` setup. Lower quota limits than Vertex AI — suitable for personal use and quick setup. The key is read from the server's inherited environment at startup; it is never written to gemini-bridge's `config.json`.
+Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). No GCP project, no `gcloud` setup. Lower quota limits than Vertex AI — suitable for personal use and quick setup. The key is read from the server's inherited environment at startup; it is never written to sidekick's `config.json`.
 
 **Minimum GCP role for service account:** `roles/aiplatform.user` (renamed from "Vertex AI Platform User" to "Agent Platform User" in 2026 — same role ID `roles/aiplatform.user`). Not required for `api_key` mode.
 

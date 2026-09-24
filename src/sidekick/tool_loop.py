@@ -1,5 +1,5 @@
 """
-gemini_bridge/tool_loop.py
+sidekick/tool_loop.py
 ---------------------------
 The bridge's own function-calling loop and the registry of tools Gemini may call.
 
@@ -34,7 +34,7 @@ from typing import Any, Optional
 
 from google.genai import types
 
-from gemini_bridge.errors import ClientError
+from sidekick.errors import ClientError
 
 _log = logging.getLogger(__name__)
 

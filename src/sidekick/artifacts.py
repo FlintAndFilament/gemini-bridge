@@ -1,5 +1,5 @@
 """
-gemini_bridge/artifacts.py
+sidekick/artifacts.py
 ---------------------------
 Persist a tool's final answer as a timestamped Markdown file.
 

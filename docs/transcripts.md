@@ -2,7 +2,7 @@
 
 ## File format
 
-Each file is named `YYYYMMDD-HHMM-gemini-bridge-transcript.md` using the **server startup timestamp**.
+Each file is named `YYYYMMDD-HHMM-sidekick-transcript.md` using the **server startup timestamp**.
 All tool calls within one Claude Code session (one server process) append to the same file.
 
 **Per-exchange format:**
@@ -11,12 +11,12 @@ All tool calls within one Claude Code session (one server process) append to the
 ## [14:32:07] gemini_review — thinking: medium | session: default
 
 **Prompt:**
-Review src/gemini_bridge/client.py, the session cache in particular.
+Review src/sidekick/client.py, the session cache in particular.
 
 Focus: Is there a race condition in the session cleanup logic?
 
 **Tool calls:**
-- → read_file(path='src/gemini_bridge/client.py') → 24.1 KiB
+- → read_file(path='src/sidekick/client.py') → 24.1 KiB
 - ✗ read_file(path='.env') → rejected: path is denied by policy: .env
 - → write_file(path='notes/review.md', content='# Review\n\n…') → wrote 1.2 KiB
 
@@ -72,7 +72,7 @@ metadata — the same footer the caller sees, but never truncated: the reply sho
 sources, the transcript lists all of them.
 
 ```markdown
-[gemini-bridge] Sources the bridge recorded from Google's grounding metadata (these are not typed by Gemini):
+[sidekick] Sources the bridge recorded from Google's grounding metadata (these are not typed by Gemini):
 1. google.com — https://aistudio.google.com/models/gemini-3
 2. android.com — https://developer.android.com/ai/gemini
 ```
@@ -108,7 +108,7 @@ starts every session fresh even though the old transcript is still on disk.
 **Default:** `./session-summaries` — resolved relative to the project root: `CLAUDE_PROJECT_DIR`
 when Claude Code sets it, otherwise the server's working directory (#102). `~` is expanded.
 
-Configured in `transcript_dir` in `~/.config/gemini-bridge/config.json`.
+Configured in `transcript_dir` in `~/.config/sidekick/config.json`.
 
 The directory, including any missing parents, is created at startup if it doesn't exist. The
 startup log names the full transcript path — see [logging.md](logging.md).
@@ -120,7 +120,7 @@ projects — the server reads `CLAUDE_PROJECT_DIR` from Claude Code.
 ## Changing the transcript directory
 
 To override the default and collect all transcripts in one place, edit
-`~/.config/gemini-bridge/config.json` and restart Claude Code:
+`~/.config/sidekick/config.json` and restart Claude Code:
 ```json
 {"transcript_dir": "~/gemini-transcripts"}
 ```

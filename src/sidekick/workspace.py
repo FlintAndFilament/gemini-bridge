@@ -1,5 +1,5 @@
 """
-gemini_bridge/workspace.py
+sidekick/workspace.py
 ---------------------------
 Composition of everything a generating tool needs to act on the repository.
 
@@ -30,11 +30,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from gemini_bridge.artifacts import ArtifactStore
-from gemini_bridge.config import Config
-from gemini_bridge.file_tools import FileTools, build_file_registry
-from gemini_bridge.sandbox import Sandbox
-from gemini_bridge.tool_loop import ToolRegistry
+from sidekick.artifacts import ArtifactStore
+from sidekick.config import Config
+from sidekick.file_tools import FileTools, build_file_registry
+from sidekick.sandbox import Sandbox
+from sidekick.tool_loop import ToolRegistry
 
 
 @dataclass(frozen=True)

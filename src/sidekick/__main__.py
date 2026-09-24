@@ -1,11 +1,11 @@
 """
-gemini_bridge/__main__.py
+sidekick/__main__.py
 --------------------------
-Entry point: python -m gemini_bridge
+Entry point: python -m sidekick
 
 Responsibilities:
   - Configure structured logging (file + stderr) before any other import runs
-  - Load config from ~/.config/gemini-bridge/config.json
+  - Load config from ~/.config/sidekick/config.json
   - Build credentials via auth.build_auth()
   - Instantiate GeminiClient and TranscriptWriter
   - Build and run the MCP server
@@ -17,17 +17,17 @@ Design notes:
   - Logging is configured first so all downstream modules inherit the handler/formatter
 
 Log files:
-  ~/.config/gemini-bridge/logs/YYYYMMDD-gemini-bridge.log
+  ~/.config/sidekick/logs/YYYYMMDD-sidekick.log
   Daily files; 4 most recent kept; multiple sessions same day append to same file.
-  Tail: tail -f ~/.config/gemini-bridge/logs/$(ls -t ~/.config/gemini-bridge/logs/*.log | head -1 | xargs basename)
+  Tail: tail -f ~/.config/sidekick/logs/$(ls -t ~/.config/sidekick/logs/*.log | head -1 | xargs basename)
 
 Environment variables:
-  GEMINI_BRIDGE_LOG_LEVEL  — DEBUG | INFO | WARNING | ERROR (default: INFO)
+  SIDEKICK_LOG_LEVEL  — DEBUG | INFO | WARNING | ERROR (default: INFO)
 
 Raises:
   SystemExit(1) — on config or auth failure at startup
 
-Used by:  pyproject.toml [project.scripts], MCP registration (python -m gemini_bridge)
+Used by:  pyproject.toml [project.scripts], MCP registration (python -m sidekick)
 Imports:  config.py, auth.py, client.py, transcript.py, server.py
 """
 
@@ -37,7 +37,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-_LOG_DIR = Path.home() / ".config" / "gemini-bridge" / "logs"
+_LOG_DIR = Path.home() / ".config" / "sidekick" / "logs"
 _MAX_LOG_FILES = 4
 # Third-party loggers worth routing into our log file: the SDK, its transport, and httpx
 # (used by sources.py to resolve grounding redirects).
@@ -47,9 +47,9 @@ _LIBRARY_LOGGERS = ("google", "google_genai", "httpx", "httpcore", "urllib3")
 def _setup_log_file(startup_time: datetime) -> logging.FileHandler:
     """Create today's log file, prune files beyond _MAX_LOG_FILES."""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = _LOG_DIR / f"{startup_time.strftime('%Y%m%d')}-gemini-bridge.log"
+    log_file = _LOG_DIR / f"{startup_time.strftime('%Y%m%d')}-sidekick.log"
     # Prune oldest files, keeping _MAX_LOG_FILES most recent
-    existing = sorted(_LOG_DIR.glob("*-gemini-bridge.log"), reverse=True)
+    existing = sorted(_LOG_DIR.glob("*-sidekick.log"), reverse=True)
     for old in existing[_MAX_LOG_FILES:]:
         try:
             old.unlink()
@@ -75,17 +75,17 @@ class _DropHttpPayloads(logging.Filter):
 
 def _configure_logging(startup_time: datetime) -> None:
     """Set up file + stderr logging before any module that calls getLogger() is imported."""
-    raw_level = os.environ.get("GEMINI_BRIDGE_LOG_LEVEL", "INFO").upper()
+    raw_level = os.environ.get("SIDEKICK_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, raw_level, logging.INFO)
     formatter = logging.Formatter(
-        fmt="[gemini-bridge] %(asctime)s %(levelname)-8s %(name)s: %(message)s",
+        fmt="[sidekick] %(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
     # On the handlers, not the loggers: a logger's filters do not run for records that
     # propagate up from its children, so google.auth.transport.requests would bypass one
     # attached to "google".
     payload_filter = _DropHttpPayloads()
-    root = logging.getLogger("gemini_bridge")
+    root = logging.getLogger("sidekick")
     root.setLevel(level)
     # File handler — primary; visible via tail
     file_handler = _setup_log_file(startup_time)
@@ -98,7 +98,7 @@ def _configure_logging(startup_time: datetime) -> None:
     stderr_handler.addFilter(payload_filter)
     root.addHandler(stderr_handler)
     # Third-party loggers need our handlers attached explicitly (#88): the handlers above sit
-    # on the "gemini_bridge" logger, which their records never pass through, so without this
+    # on the "sidekick" logger, which their records never pass through, so without this
     # a library record reaches nothing but Python's last-resort stderr handler — DEBUG mode
     # showed no library output, and setting their level alone did nothing. Below DEBUG they
     # stay at WARNING: httpx logs every request at INFO.
@@ -113,21 +113,21 @@ def _configure_logging(startup_time: datetime) -> None:
 _startup_time = datetime.now()
 _configure_logging(_startup_time)
 
-# Use explicit package path — __name__ is "__main__" when run via python3 -m gemini_bridge,
-# which is not a child of "gemini_bridge" and would bypass our file handler.
-_log = logging.getLogger("gemini_bridge.__main__")
+# Use explicit package path — __name__ is "__main__" when run via python3 -m sidekick,
+# which is not a child of "sidekick" and would bypass our file handler.
+_log = logging.getLogger("sidekick.__main__")
 
 
 def main() -> None:
     startup_time = _startup_time
 
-    from gemini_bridge.auth import AuthError, build_auth
-    from gemini_bridge.client import GeminiClient
-    from gemini_bridge.config import ConfigError, load_config
-    from gemini_bridge.sandbox import SandboxError
-    from gemini_bridge.server import build_server
-    from gemini_bridge.transcript import TranscriptError, TranscriptWriter
-    from gemini_bridge.workspace import build_workspace, project_root
+    from sidekick.auth import AuthError, build_auth
+    from sidekick.client import GeminiClient
+    from sidekick.config import ConfigError, load_config
+    from sidekick.sandbox import SandboxError
+    from sidekick.server import build_server
+    from sidekick.transcript import TranscriptError, TranscriptWriter
+    from sidekick.workspace import build_workspace, project_root
 
     try:
         config = load_config()

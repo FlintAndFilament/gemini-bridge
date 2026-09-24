@@ -1,20 +1,21 @@
 """
-gemini_bridge/tools/debug.py
------------------------------
-MCP tool: gemini_debug — hypothesis generation for bugs and failures.
+sidekick/tools/ask.py
+---------------------------
+MCP tool: gemini_ask — general-purpose Gemini query.
 
 Responsibilities:
-  - Register the gemini_debug MCP tool with the server
-  - Accept error description + optional context and thinking level
-  - Return Gemini's evidence-driven root cause hypotheses and diagnostic steps
+  - Register the gemini_ask MCP tool with the server
+  - Handle prompt parameter and optional thinking level
+  - Return Gemini's response as a string
 
 Design notes:
-  - Single Responsibility: tool registration + debug persona only
-  - Open/Closed: system prompt changes do not affect other tools
-  - System prompt: evidence-based, not speculative — generates hypotheses from what's shown
+  - Single Responsibility: tool registration + prompt routing only; no session/credential logic
+  - Open/Closed: changing the system prompt or parameters does not affect other tools
+  - System prompt: direct, precise, concrete — no specialized persona
 
-Used by:  tools/__init__.py -> register_debug(), server.py (via tools/__init__)
-Imports:  tools/base.py (call_gemini), client.py (GeminiClient), transcript.py (TranscriptWriter)
+Used by:  tools/__init__.py -> register_ask(), server.py (via tools/__init__)
+Imports:  tools/base.py (call_gemini, ThinkingParam), client.py (GeminiClient),
+          transcript.py (TranscriptWriter)
 """
 
 from typing import Annotated, Optional
@@ -22,9 +23,9 @@ from typing import Annotated, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.config import ThinkingLevel
-from gemini_bridge.tools.base import (
+from sidekick.client import GeminiClient
+from sidekick.config import ThinkingLevel
+from sidekick.tools.base import (
     ArtifactMode,
     ToolCapability,
     ToolResult,
@@ -34,16 +35,15 @@ from gemini_bridge.tools.base import (
     session_param_hint,
     tool_annotations,
 )
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace
 
 _SYSTEM_PROMPT = (
-    "You are a systematic debugging assistant working alongside Claude, another AI. "
-    "Generate root cause hypotheses from the evidence provided. Reason through failure modes. "
-    "Suggest specific diagnostic steps. Don't guess without basis — reason from what's shown."
+    "You are a knowledgeable technical assistant working alongside Claude, another AI. "
+    "Answer directly and precisely. Prefer concrete examples. When uncertain, say so."
 )
 
-_TOOL_NAME = "gemini_debug"
+_TOOL_NAME = "gemini_ask"
 # Capability row (#68): read-only: findings go back to Claude, not to disk.
 _WRITE = False
 
@@ -51,10 +51,7 @@ _WRITE = False
 _ARTIFACTS: ArtifactMode = "never"
 
 # Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
-_DESCRIPTION = (
-    "Ask Gemini for root cause hypotheses and diagnostic steps. Provide the error "
-    "and any relevant context (code, recent changes, environment)."
-)
+_DESCRIPTION = "Ask Gemini a general question. Use when no other specialized tool fits."
 
 
 # The capability row server.py advertises; _WRITE, _ARTIFACTS and _DESCRIPTION above
@@ -70,7 +67,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_debug with the MCP server."""
+    """Register gemini_ask with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -84,16 +81,8 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_debug(
-        error: Annotated[
-            str, Field(description="The error message, stack trace, or failure description")
-        ],
-        context: Annotated[
-            str,
-            Field(
-                description="Optional context: relevant code, recent changes, environment details."
-            ),
-        ] = "",
+    async def gemini_ask(
+        prompt: Annotated[str, Field(description="The question or request to send to Gemini")],
         thinking: Annotated[
             Optional[ThinkingLevel],
             Field(
@@ -101,7 +90,8 @@ def register(
             ),
         ] = None,
         session_name: Annotated[
-            str, Field(description=session_param_hint(workspace, write=_WRITE))
+            str,
+            Field(description=session_param_hint(workspace, write=_WRITE)),
         ] = "default",
         model: Annotated[Optional[str], Field(description=model_hint)] = None,
         web: Annotated[
@@ -115,14 +105,13 @@ def register(
             ),
         ] = None,
     ) -> ToolResult:
-        full_prompt = error if not context else f"{error}\n\nContext:\n{context}"
         return await call_gemini(
             client=client,
             transcript=transcript,
             tool_name=_TOOL_NAME,
             session_name=session_name,
             system_instruction=_SYSTEM_PROMPT,
-            prompt=full_prompt,
+            prompt=prompt,
             thinking=thinking,
             model=model,
             workspace=workspace,

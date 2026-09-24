@@ -13,10 +13,10 @@ from typing import Any, Optional
 
 import pytest
 
-from gemini_bridge.guide import HELP_TOPICS, INSTRUCTIONS_BUDGET, help_text, server_instructions
-from gemini_bridge.tools import CAPABILITIES, HELP_TOOL_NAME, LIST_MODELS_TOOL_NAME
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace
+from sidekick.guide import HELP_TOPICS, INSTRUCTIONS_BUDGET, help_text, server_instructions
+from sidekick.tools import CAPABILITIES, HELP_TOOL_NAME, LIST_MODELS_TOOL_NAME
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace
 from tests.test_capability_metadata import _server, _tools, _workspace
 
 GENERATING = [c.name for c in CAPABILITIES]

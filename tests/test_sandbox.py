@@ -1,11 +1,11 @@
-"""Tests for gemini_bridge/sandbox.py — path confinement is the entire security boundary."""
+"""Tests for sidekick/sandbox.py — path confinement is the entire security boundary."""
 
 import os
 from pathlib import Path
 
 import pytest
 
-from gemini_bridge.sandbox import Sandbox, SandboxError
+from sidekick.sandbox import Sandbox, SandboxError
 
 
 @pytest.fixture

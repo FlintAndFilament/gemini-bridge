@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from gemini_bridge import setup_cli
+from sidekick import setup_cli
 
 # Captured before any test monkeypatches setup_cli._keychain_problem, so tests that need the
 # real validation logic (not the autouse no-op below) can restore it.
@@ -18,7 +18,7 @@ _REAL_KEYCHAIN_PROBLEM = setup_cli._keychain_problem
 
 @pytest.fixture
 def cfg(tmp_path: Path) -> Path:
-    return tmp_path / "gemini-bridge" / "config.json"
+    return tmp_path / "sidekick" / "config.json"
 
 
 @pytest.fixture(autouse=True)
@@ -192,7 +192,7 @@ class TestValuesAreNeverInterpolated:
             [
                 sys.executable,
                 "-m",
-                "gemini_bridge.setup_cli",
+                "sidekick.setup_cli",
                 "write",
                 "--config",
                 str(cfg),

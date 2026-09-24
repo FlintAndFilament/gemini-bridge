@@ -1,11 +1,11 @@
-"""Tests for gemini_bridge/artifacts.py — bridge-written deliverables."""
+"""Tests for sidekick/artifacts.py — bridge-written deliverables."""
 
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from gemini_bridge.artifacts import ArtifactStore, slugify
+from sidekick.artifacts import ArtifactStore, slugify
 
 FIXED = datetime(2026, 9, 17, 22, 5)
 

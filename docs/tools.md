@@ -130,9 +130,9 @@ sandbox root and not denied, or the server refuses to start) as
 `20260921-1432-gemini-review-is-there-a-race-condition-in.md`. The slug comes from `question`
 (else `content` / `description`) for review and architect, and from `topic` for brainstorm. The
 file starts with a header naming the tool, model, session, and time, followed by the answer
-(including any sources footer). The reply ends with `[gemini-bridge] artifact saved: <path>`,
+(including any sources footer). The reply ends with `[sidekick] artifact saved: <path>`,
 relative to the repo root. If saving fails you still get the answer, plus a
-`[gemini-bridge notice] artifact not saved: …` line. Artifacts are written by the bridge, not
+`[sidekick notice] artifact not saved: …` line. Artifacts are written by the bridge, not
 by Gemini, so they are saved even when file tools are off.
 
 ---
@@ -180,7 +180,7 @@ Server-side calls never reach `ToolRegistry`, so they would otherwise leave no t
 metadata is written into the transcript beside the file-tool calls:
 
 ```
-- → read_file(path='src/gemini_bridge/web_tools.py') → 3.6 KiB
+- → read_file(path='src/sidekick/web_tools.py') → 3.6 KiB
 - → google_search(query='"url_context" google-genai sdk') → 2 source(s): google.com, google.dev
 - → url_context(url='https://peps.python.org/pep-0020/') → retrieved
 ```
@@ -197,7 +197,7 @@ footer below.
 caller can check a claim instead of taking it on trust:
 
 ```
-[gemini-bridge] Sources the bridge recorded from Google's grounding metadata (these are not typed by Gemini):
+[sidekick] Sources the bridge recorded from Google's grounding metadata (these are not typed by Gemini):
 1. ai.google.dev — https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview
 2. https://docs.python.org/3/whatsnew/3.14.html
 ```
@@ -248,7 +248,7 @@ Claude session to do exactly that.
   convert fine, but the flag that lets them share a request with the bridge's file tools is
   Developer-API only, and the file tools are almost always on. On a Vertex backend the bridge
   drops web access rather than failing the call (the tool keeps `write_file`, since no web
-  content is in play), and the reply opens with `[gemini-bridge notice] Web access was requested
+  content is in play), and the reply opens with `[sidekick notice] Web access was requested
   but is unavailable on the <method> backend, so this answer is not web-grounded.` That applies
   when web access comes from `web_tools.enabled` too. The tool descriptions, server instructions
   and `gemini_help` say web access is unavailable.
@@ -349,7 +349,7 @@ gemini_brainstorm(
 **Example:**
 ```
 gemini_review(
-    content="Review src/gemini_bridge/client.py, the session cache in particular.",
+    content="Review src/sidekick/client.py, the session cache in particular.",
     question="Is there a race condition in the session cleanup logic?"
 )
 ```
@@ -456,7 +456,7 @@ nothing, and is not recorded in the transcript.
 - Caches the result for the process lifetime; `refresh=true` forces a re-fetch.
 - **Graceful degradation:** if the live catalog can't be fetched (or has no chat models),
   returns the curated static shortlist (from `models.py`) headed by a
-  `[gemini-bridge notice] Live model list unavailable (…)` line instead of failing. That
+  `[sidekick notice] Live model list unavailable (…)` line instead of failing. That
   result is not cached, so the next call tries the live list again.
 
 > **Note:** the list is a *discovery aid*, not a hard whitelist — an explicitly-requested valid

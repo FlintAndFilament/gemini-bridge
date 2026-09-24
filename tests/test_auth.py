@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge/auth.py — build_credentials() dispatch and error handling."""
+"""Tests for sidekick/auth.py — build_credentials() dispatch and error handling."""
 
 import json
 import re
@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gemini_bridge.auth import AuthError, build_auth, build_credentials
-from gemini_bridge.config import AuthConfig, ConfigError
+from sidekick.auth import AuthError, build_auth, build_credentials
+from sidekick.config import AuthConfig, ConfigError
 
 
 def _adc_config() -> AuthConfig:

@@ -1,5 +1,5 @@
 """
-gemini_bridge/file_tools.py
+sidekick/file_tools.py
 ----------------------------
 The file tools Gemini may call: list_dir, glob, grep, read_file, write_file.
 
@@ -39,8 +39,8 @@ from typing import Any, Optional
 import regex
 from google.genai import types
 
-from gemini_bridge.sandbox import Sandbox, SandboxError
-from gemini_bridge.tool_loop import ToolRegistry
+from sidekick.sandbox import Sandbox, SandboxError
+from sidekick.tool_loop import ToolRegistry
 
 _log = logging.getLogger(__name__)
 

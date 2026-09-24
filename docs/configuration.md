@@ -1,6 +1,6 @@
 # Configuration Reference
 
-**Config file location:** `~/.config/gemini-bridge/config.json`
+**Config file location:** `~/.config/sidekick/config.json`
 
 Created by `/sidekick:setup`. Safe to edit by hand. The server reads it once at startup, so restart
 the MCP server (or Claude Code) after an edit.
@@ -90,7 +90,7 @@ Sets the default model for tool calls that omit the `model` parameter. Accepts a
 family, or a concrete id (e.g. `"gemini-3.5-flash"`) to pin one. Individual calls always override
 it via `model=`. The value is not checked when the config loads: a name that isn't a Gemini
 model (anything not shaped `gemini-<version>-…`, a `-latest` alias, or a bridge alias) fails every
-call that uses it with a `[gemini-bridge error] Unrecognized model family` reply, and a well-formed
+call that uses it with a `[sidekick error] Unrecognized model family` reply, and a well-formed
 id the backend doesn't serve fails with the API's 404. The backend-aware schema hint and
 `gemini_list_models` reflect the effective default. See
 [Choosing a model](#choosing-a-model).
@@ -116,7 +116,7 @@ it judges a different level is appropriate.
 Directory where transcript files are written. Created if it doesn't exist; if it can't be
 created (read-only parent, permission denied) the server stops at startup with
 `Transcript directory cannot be created: …` instead of a traceback (#87). Transcript files
-are named `YYYYMMDD-HHMM-gemini-bridge-transcript.md` using the server startup time.
+are named `YYYYMMDD-HHMM-sidekick-transcript.md` using the server startup time.
 
 The project root is `CLAUDE_PROJECT_DIR` when Claude Code sets it, otherwise the server's
 working directory (#102). The default `./session-summaries` resolves relative to that root —
@@ -166,7 +166,7 @@ what Gemini can read.
 **Developer API only.** Web access works only with `auth.method = "api_key"`. On Vertex AI
 (`adc`, `env`, `keychain`) the setting and any `web=true` are accepted but dropped: the call runs
 without web access, keeps its normal file tools (including `write_file` where the tool has it),
-and the reply starts with a `[gemini-bridge notice]` saying the answer is not web-grounded. Tool
+and the reply starts with a `[sidekick notice]` saying the answer is not web-grounded. Tool
 descriptions on Vertex say web access is unavailable.
 
 ---
@@ -223,7 +223,7 @@ See [auth.md](auth.md) for full setup instructions for each method.
 ### `auth.keychain_service`
 
 **Type:** string
-**Default:** `"gemini-bridge"`
+**Default:** `"sidekick"`
 **Only used when:** `auth.method = "keychain"`
 
 The service name used in `security find-generic-password -s {service}`.
@@ -278,7 +278,7 @@ Every tool accepts an optional `model=` parameter.
   server to pick up a new release; the choice never changes mid-session.
 - **Fallback:** each request is retried up to 3 times with backoff on 503/429. If it still fails,
   the call is retried once on the newest Flash-Lite (unless that is the model that just failed)
-  and the response is prefixed with a visible `[gemini-bridge notice]`. If
+  and the response is prefixed with a visible `[sidekick notice]`. If
   Gemini already wrote a file during that call, it is not retried (writes are never replayed).
 - **Offline:** if the model list can't be read at startup, the pinned defaults are used —
   `gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`, Pro `gemini-3.1-pro-preview` — and a

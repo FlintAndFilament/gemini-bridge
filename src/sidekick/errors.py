@@ -1,5 +1,5 @@
 """
-gemini_bridge/errors.py
+sidekick/errors.py
 ------------------------
 Shared exception types.
 

@@ -1,12 +1,12 @@
-"""Tests for gemini_bridge.tools.list_models — live catalog rendering + graceful degradation."""
+"""Tests for sidekick.tools.list_models — live catalog rendering + graceful degradation."""
 
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from gemini_bridge import models
-from gemini_bridge.client import DEFAULT_MODEL, ClientError, GeminiClient
-from gemini_bridge.config import Config
-from gemini_bridge.tools import list_models as lm
+from sidekick import models
+from sidekick.client import DEFAULT_MODEL, ClientError, GeminiClient
+from sidekick.config import Config
+from sidekick.tools import list_models as lm
 
 
 def _meta(
@@ -133,7 +133,7 @@ class TestRegistration:
 
         from mcp.server.fastmcp import FastMCP
 
-        from gemini_bridge.transcript import TranscriptWriter
+        from sidekick.transcript import TranscriptWriter
 
         client = _client_api_key()
         client._raw_client.models.list.return_value = [_meta("models/gemini-2.5-flash", "Flash")]
@@ -145,7 +145,7 @@ class TestRegistration:
 
 class TestLatestMarkers:
     def test_marks_latest_per_family(self) -> None:
-        from gemini_bridge.tools.list_models import format_model_list
+        from sidekick.tools.list_models import format_model_list
 
         out = format_model_list(
             [_meta("models/gemini-3.8-flash", "3.8"), _meta("models/gemini-3.5-flash", "3.5")],

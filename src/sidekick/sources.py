@@ -1,5 +1,5 @@
 """
-gemini_bridge/sources.py
+sidekick/sources.py
 --------------------------
 The web sources behind a web-grounded answer: resolving Google's grounding redirects to real
 page URLs, and the footer listing them (#80, #82).
@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from gemini_bridge.tool_loop import ToolCallRecord
+from sidekick.tool_loop import ToolCallRecord
 
 _log = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ _REDIRECT_HOST = "vertexaisearch.cloud.google.com"
 _REDIRECT_PATH = "/grounding-api-redirect/"
 
 TYPED_URL_CAUTION = (
-    "[gemini-bridge] The answer above contains links Gemini typed itself. Gemini is asked not "
+    "[sidekick] The answer above contains links Gemini typed itself. Gemini is asked not "
     "to, but an explicit request for links overrides that, and the URLs it types are often "
     "plausible and wrong. Trust the recorded list below instead."
 )
@@ -51,7 +51,7 @@ TYPED_URL_CAUTION = (
 _TYPED_URL = re.compile(r"https?://\S", re.IGNORECASE)
 
 FOOTER_HEADING = (
-    "[gemini-bridge] Sources the bridge recorded from Google's grounding metadata (these are "
+    "[sidekick] Sources the bridge recorded from Google's grounding metadata (these are "
     "not typed by Gemini):"
 )
 
