@@ -217,7 +217,7 @@ once to the newest Flash-Lite (see [configuration.md](configuration.md#choosing-
 | `no ADC credentials found` | ADC not configured | `gcloud auth application-default login` |
 | Token refresh / `invalid_grant` errors on a call | ADC refresh token expired or revoked | `gcloud auth application-default login` |
 | `403 PERMISSION_DENIED: quota project not set` | ADC user credentials have no quota project | `gcloud auth application-default set-quota-project YOUR_PROJECT_ID` |
-| `auth method is 'env' but GOOGLE_APPLICATION_CREDENTIALS is not set` / `points at a file that does not exist` / `file could not be loaded` | `env` method: the variable is unset, names a missing file, or names a file google-auth cannot read. ADC is never used as a fallback | `export GOOGLE_APPLICATION_CREDENTIALS=...` or pass it with `-e` at registration; check the path and the file's contents |
+| `auth method is 'env' but GOOGLE_APPLICATION_CREDENTIALS is not set` / `points at a file that does not exist` / `file could not be loaded` | `env` method: the variable is unset, names a missing file, or names a file google-auth cannot read. ADC is never used as a fallback | Export it in the shell profile of the shell that starts Claude Code, e.g. `export GOOGLE_APPLICATION_CREDENTIALS=...`, then restart Claude Code; check the path and the file's contents |
 | `Keychain item not found` | Secret not stored | Re-run the `security add-generic-password` command |
 | `not valid service account JSON` | Keychain value corrupted | Re-store the SA JSON key |
 | `'security' CLI not found` | Not macOS | Keychain method is macOS-only |

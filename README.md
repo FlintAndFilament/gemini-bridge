@@ -93,7 +93,7 @@ sequenceDiagram
 
 | Requirement | Notes |
 |---|---|
-| Python 3.11+ | `python3 --version` |
+| [uv](https://docs.astral.sh/uv/) | `uv --version`; `/sidekick:setup` offers to install it. uv fetches its own Python, so you don't need Python installed separately to run the plugin |
 | Claude Code | MCP-enabled version |
 | Auth | **API key (easiest):** `export GEMINI_API_KEY="..."` — get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no GCP needed · **Vertex AI:** ADC, SA key file, or Apple Keychain — requires gcloud CLI + GCP project — see [Auth methods](#auth-methods) |
 
@@ -122,6 +122,11 @@ python3 -m pip uninstall gemini-bridge
 
 Your `~/.config/gemini-bridge/config.json` is kept. Then follow the Quick start above — `/sidekick:setup`
 reads that same file and offers its values as defaults.
+
+Tool names change too: `mcp__gemini-bridge__*` becomes `mcp__plugin_sidekick_gemini__*` (e.g.
+`mcp__gemini-bridge__gemini_ask` → `mcp__plugin_sidekick_gemini__gemini_ask`). If you have
+permission allowlists (`settings.json`, `.claude/settings.local.json`, or CLI `--allowedTools`)
+naming the old tools, update them to the new names or they'll silently stop matching.
 
 Restart Claude Code after installing. On next start you'll see startup entries in the log:
 

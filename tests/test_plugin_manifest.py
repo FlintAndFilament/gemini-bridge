@@ -28,10 +28,12 @@ def test_marketplace_ships_main_never_develop() -> None:
 
 
 def test_server_launches_frozen_with_the_venv_in_plugin_data() -> None:
-    server = load(".mcp.json")["gemini"]
+    server = load(".claude-plugin/plugin.json")["mcpServers"]["gemini"]
     assert server["command"] == "uv"
     assert server["args"][:2] == ["run", "--frozen"]
-    assert "${CLAUDE_PLUGIN_ROOT}" in server["args"]
+    project_index = server["args"].index("--project")
+    assert server["args"][project_index + 1] == "${CLAUDE_PLUGIN_ROOT}"
+    assert "--directory" not in server["args"]
     assert server["args"][-1] == "gemini-bridge"
     assert server["env"]["UV_PROJECT_ENVIRONMENT"] == "${CLAUDE_PLUGIN_DATA}/venv"
 
