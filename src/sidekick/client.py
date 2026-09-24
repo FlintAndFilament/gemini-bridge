@@ -164,6 +164,7 @@ class Session:
 
     model: str
     history: list[types.Content] = field(default_factory=list)
+    name: str = ""  # the cache name, "<tool>:<session_name>" — for list_sessions
 
 
 class GeminiClient:
@@ -214,12 +215,16 @@ class GeminiClient:
         if cache_key in self._sessions:
             self._sessions.move_to_end(cache_key)
             return self._sessions[cache_key]
-        session = Session(model=effective_model)
+        session = Session(model=effective_model, name=name)
         self._sessions[cache_key] = session
         if len(self._sessions) > MAX_SESSIONS:
             evicted, _ = self._sessions.popitem(last=False)
             _log.debug("session cache evicted (LRU): %s", evicted)
         return session
+
+    def sessions(self) -> list[Session]:
+        """The live sessions, most recently used first. Makes no API call."""
+        return list(reversed(self._sessions.values()))
 
     @property
     def default_thinking(self) -> ThinkingLevel:
