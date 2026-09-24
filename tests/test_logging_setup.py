@@ -13,9 +13,9 @@ import pytest
 
 PROBE = """
 import logging
-import gemini_bridge.__main__  # configures logging on import
+import sidekick.__main__  # configures logging on import
 
-logging.getLogger("gemini_bridge.probe").info("OWN_PROBE")
+logging.getLogger("sidekick.probe").info("OWN_PROBE")
 logging.getLogger("httpx").warning("LIB_WARNING_PROBE")
 logging.getLogger("google").debug("LIB_DEBUG_PROBE")
 
@@ -35,10 +35,10 @@ def log_text(home: Path, level: str) -> str:
         [sys.executable, "-c", PROBE],
         capture_output=True,
         text=True,
-        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "GEMINI_BRIDGE_LOG_LEVEL": level},
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "SIDEKICK_LOG_LEVEL": level},
     )
     assert result.returncode == 0, result.stderr
-    logs = list((home / ".config/gemini-bridge/logs").glob("*-gemini-bridge.log"))
+    logs = list((home / ".config/sidekick/logs").glob("*-sidekick.log"))
     assert len(logs) == 1, logs
     return logs[0].read_text()
 

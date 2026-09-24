@@ -1,5 +1,5 @@
 """
-gemini_bridge/tools/help.py
+sidekick/tools/help.py
 -----------------------------
 MCP tool: gemini_help — the full detail behind the short server instructions (#78).
 
@@ -39,7 +39,7 @@ def register(
     @mcp.tool(
         name=HELP_TOOL_NAME,
         description=(
-            "Full detail on gemini-bridge, beyond the short server instructions: file access "
+            "Full detail on sidekick, beyond the short server instructions: file access "
             "limits and deny-list, web rules, sessions, what reaches disk, and each tool's "
             "capabilities. Topics: " + ", ".join(topics) + ". Omit topic for everything. "
             "Writes nothing."

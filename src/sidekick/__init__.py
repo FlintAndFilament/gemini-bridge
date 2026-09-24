@@ -1,7 +1,7 @@
 """
-gemini_bridge/__init__.py
+sidekick/__init__.py
 --------------------------
-Package root for gemini-bridge MCP server.
+Package root for sidekick MCP server.
 
 Responsibilities:
   - Expose package version

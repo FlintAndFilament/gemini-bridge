@@ -1,5 +1,5 @@
 """
-gemini_bridge/server.py
+sidekick/server.py
 ------------------------
 MCP server construction and tool registration.
 
@@ -27,9 +27,9 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.guide import HELP_TOPICS, help_text, server_instructions
-from gemini_bridge.tools import (
+from sidekick.client import GeminiClient
+from sidekick.guide import HELP_TOPICS, help_text, server_instructions
+from sidekick.tools import (
     register_architect,
     register_ask,
     register_brainstorm,
@@ -38,12 +38,12 @@ from gemini_bridge.tools import (
     register_list_models,
     register_review,
 )
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace
 
 __all__ = ["build_server", "server_instructions"]
 
-_SERVER_NAME = "gemini-bridge"
+_SERVER_NAME = "sidekick"
 
 
 def build_server(

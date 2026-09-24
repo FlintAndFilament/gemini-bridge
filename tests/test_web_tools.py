@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge/web_tools.py — the web capability and its exclusion rule (#76).
+"""Tests for sidekick/web_tools.py — the web capability and its exclusion rule (#76).
 
 The load-bearing property is D4: web access and write_file never coexist in one call.
 A web page is attacker-controlled text; once it is in a call that can write to the repo,
@@ -14,8 +14,8 @@ from unittest.mock import patch
 import pytest
 from google.genai import types
 
-from gemini_bridge.config import Config
-from gemini_bridge.web_tools import resolve_capabilities, web_tool_set
+from sidekick.config import Config
+from sidekick.web_tools import resolve_capabilities, web_tool_set
 
 
 class TestResolveCapabilities:
@@ -96,7 +96,7 @@ class TestBuildConfigAttachesWebTools:
     """The request the SDK actually receives."""
 
     def _client(self) -> object:
-        from gemini_bridge.client import GeminiClient
+        from sidekick.client import GeminiClient
 
         with patch("google.genai.Client"):
             return GeminiClient(Config(auth={"method": "api_key"}), api_key="k")
@@ -161,10 +161,10 @@ class TestExclusionReachesTheRequest:
         from datetime import datetime
         from unittest.mock import AsyncMock
 
-        from gemini_bridge.client import GeminiClient
-        from gemini_bridge.server import build_server
-        from gemini_bridge.transcript import TranscriptWriter
-        from gemini_bridge.workspace import build_workspace
+        from sidekick.client import GeminiClient
+        from sidekick.server import build_server
+        from sidekick.transcript import TranscriptWriter
+        from sidekick.workspace import build_workspace
         from tests.test_tools import _text_response
 
         cfg = Config(auth={"method": "api_key"})
@@ -206,10 +206,10 @@ class TestAdvertisedWebRow:
         import asyncio
         from datetime import datetime
 
-        from gemini_bridge.client import GeminiClient
-        from gemini_bridge.server import build_server
-        from gemini_bridge.transcript import TranscriptWriter
-        from gemini_bridge.workspace import build_workspace
+        from sidekick.client import GeminiClient
+        from sidekick.server import build_server
+        from sidekick.transcript import TranscriptWriter
+        from sidekick.workspace import build_workspace
 
         cfg = Config(
             auth={"method": "api_key"},  # type: ignore[arg-type]
@@ -270,7 +270,7 @@ class TestGroundingIsRecorded:
         )
 
     def test_queries_and_sources_are_recorded(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(self._candidate(["python version"], ["https://python.org"]), records)
@@ -280,7 +280,7 @@ class TestGroundingIsRecorded:
         assert "python.org" in records[0].summary
 
     def test_each_query_gets_its_own_record(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(self._candidate(["a", "b"], ["https://x.test"]), records)
@@ -299,7 +299,7 @@ class TestGroundingIsRecorded:
     def test_url_fetch_is_recorded_from_its_own_metadata(self) -> None:
         """A pure url_context fetch produces no grounding chunks; it must still be logged,
         or the transcript never shows which URL entered the context."""
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(
@@ -312,7 +312,7 @@ class TestGroundingIsRecorded:
         assert records[0].ok is True
 
     def test_failed_retrieval_is_recorded_as_a_failure(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(
@@ -324,7 +324,7 @@ class TestGroundingIsRecorded:
 
     def test_search_and_fetch_are_recorded_separately(self) -> None:
         """A call that both searches and fetches must not attribute the fetch to the search."""
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         candidate = self._candidate(["q"], ["https://x.test"])
         candidate.url_context_metadata = types.UrlContextMetadata(
@@ -343,7 +343,7 @@ class TestGroundingIsRecorded:
         assert fetch.args["url"] == "https://named.test/page"
 
     def test_no_grounding_means_no_records(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(types.Candidate(content=types.Content(role="model", parts=[])), records)
@@ -352,7 +352,7 @@ class TestGroundingIsRecorded:
     def test_readable_source_name_preferred_over_redirect_uri(self) -> None:
         """Live grounding returns an opaque vertexaisearch redirect as uri; title holds the
         site, which is the part an auditor can actually use."""
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         chunk = types.GroundingChunk(
             web=types.GroundingChunkWeb(
@@ -374,7 +374,7 @@ class TestGroundingIsRecorded:
     def test_titleless_source_is_recorded_with_no_name(self) -> None:
         """Without a title the name must stay empty so the footer can name the source after
         its resolved URL; the redirect link is not a name (#90)."""
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIabc"
         candidate = types.Candidate(
@@ -392,7 +392,7 @@ class TestGroundingIsRecorded:
         assert records[0].summary.startswith("1 source(s)")
 
     def test_untitled_sources_are_counted_beside_named_ones(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         chunks = [
             types.GroundingChunk(web=types.GroundingChunkWeb(uri="https://x.test", title="x.test")),
@@ -410,14 +410,14 @@ class TestGroundingIsRecorded:
         assert records[0].summary == "3 source(s): x.test"
 
     def test_duplicate_sources_are_collapsed(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(self._candidate(["q"], ["https://x.test", "https://x.test"]), records)
         assert records[0].summary.startswith("1 source(s)")
 
     def test_records_render_into_the_transcript_format(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(self._candidate(["q"], ["https://x.test"]), records)
@@ -448,7 +448,7 @@ class TestUntrustedContentDoesNotPersist:
         )
 
     def test_history_content_keeps_only_answer_parts(self) -> None:
-        from gemini_bridge.tool_loop import _answer
+        from sidekick.tool_loop import _answer
 
         result = _answer(self._turn_with_web_traffic())
         assert result.text == "the answer"
@@ -457,12 +457,12 @@ class TestUntrustedContentDoesNotPersist:
             assert part.tool_response is None
 
     def test_answer_text_is_unaffected_by_the_stripping(self) -> None:
-        from gemini_bridge.tool_loop import _answer
+        from sidekick.tool_loop import _answer
 
         assert _answer(self._turn_with_web_traffic()).text == "the answer"
 
     def test_ordinary_turns_are_unchanged(self) -> None:
-        from gemini_bridge.tool_loop import _answer
+        from sidekick.tool_loop import _answer
 
         candidate = types.Candidate(
             content=types.Content(role="model", parts=[types.Part.from_text(text="plain")])
@@ -478,7 +478,7 @@ class TestVertexCannotCarryTheFlag:
     def _vertex_client(self):
         from unittest.mock import MagicMock
 
-        from gemini_bridge.client import GeminiClient
+        from sidekick.client import GeminiClient
 
         with patch("google.genai.Client"):
             return GeminiClient(Config(project="p", auth={"method": "adc"}), MagicMock())
@@ -487,7 +487,7 @@ class TestVertexCannotCarryTheFlag:
         assert self._vertex_client().web_supported is False
 
     def test_developer_api_supports_web(self) -> None:
-        from gemini_bridge.client import GeminiClient
+        from sidekick.client import GeminiClient
 
         with patch("google.genai.Client"):
             client = GeminiClient(Config(auth={"method": "api_key"}), api_key="k")
@@ -537,28 +537,28 @@ class TestSourcesReachTheCaller:
     """#80: the caller gets title + link for every source a web answer drew on."""
 
     def test_search_record_carries_title_and_uri(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(_grounded(["q"], [("python.org", REDIRECT)]), records)
         assert records[0].sources == (("python.org", REDIRECT),)
 
     def test_sources_attach_once_not_per_query(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(_grounded(["a", "b"], [("x.test", "https://x.test")]), records)
         assert sum(len(r.sources) for r in records) == 1
 
     def test_sources_without_a_reported_query_are_kept(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         records: list[ToolCallRecord] = []
         record_grounding(_grounded([], [("x.test", "https://x.test")]), records)
         assert [s for r in records for s in r.sources] == [("x.test", "https://x.test")]
 
     def test_retrieved_url_is_a_source_and_a_failed_one_is_not(self) -> None:
-        from gemini_bridge.tool_loop import ToolCallRecord, record_grounding
+        from sidekick.tool_loop import ToolCallRecord, record_grounding
 
         candidate = types.Candidate(
             content=types.Content(role="model", parts=[types.Part.from_text(text="a")]),
@@ -581,14 +581,14 @@ class TestSourcesReachTheCaller:
         assert sources == [("https://ok.test", "https://ok.test")]
 
     def test_footer_is_empty_without_sources(self) -> None:
-        from gemini_bridge.sources import sources_footer
-        from gemini_bridge.tool_loop import ToolCallRecord
+        from sidekick.sources import sources_footer
+        from sidekick.tool_loop import ToolCallRecord
 
         assert sources_footer([ToolCallRecord("read_file", {}, True, "1 B")]) == ""
 
     def test_footer_lists_title_and_link_once_each(self) -> None:
-        from gemini_bridge.sources import sources_footer
-        from gemini_bridge.tool_loop import ToolCallRecord
+        from sidekick.sources import sources_footer
+        from sidekick.tool_loop import ToolCallRecord
 
         rec = ToolCallRecord("google_search", {"query": "q"}, True, "", (("python.org", REDIRECT),))
         text = sources_footer([rec, rec])
@@ -597,8 +597,8 @@ class TestSourcesReachTheCaller:
         assert "unresolved Google redirect" in text  # unresolved: the caller must know
 
     def test_footer_is_capped(self) -> None:
-        from gemini_bridge.sources import MAX_SOURCES, sources_footer
-        from gemini_bridge.tool_loop import ToolCallRecord
+        from sidekick.sources import MAX_SOURCES, sources_footer
+        from sidekick.tool_loop import ToolCallRecord
 
         many = tuple((f"s{i}", f"https://s{i}.test") for i in range(MAX_SOURCES + 3))
         text = sources_footer([ToolCallRecord("google_search", {}, True, "", many)])
@@ -612,10 +612,10 @@ class TestSourcesReachTheCaller:
         from datetime import datetime
         from unittest.mock import AsyncMock
 
-        from gemini_bridge.client import GeminiClient
-        from gemini_bridge.server import build_server
-        from gemini_bridge.transcript import TranscriptWriter
-        from gemini_bridge.workspace import build_workspace
+        from sidekick.client import GeminiClient
+        from sidekick.server import build_server
+        from sidekick.transcript import TranscriptWriter
+        from sidekick.workspace import build_workspace
 
         cfg = Config(auth={"method": "api_key"})
         with patch("google.genai.Client"):
@@ -629,7 +629,7 @@ class TestSourcesReachTheCaller:
         mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
         real = "https://www.python.org/downloads/"
         resolver = AsyncMock(return_value={REDIRECT: real})
-        with patch("gemini_bridge.tools.base.resolve_redirects", resolver):
+        with patch("sidekick.tools.base.resolve_redirects", resolver):
             result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
         blocks = result[0] if isinstance(result, tuple) else result
         text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
@@ -644,11 +644,11 @@ class TestSourcesReachTheCaller:
         from datetime import datetime
         from unittest.mock import AsyncMock
 
-        from gemini_bridge.client import GeminiClient
-        from gemini_bridge.server import build_server
-        from gemini_bridge.sources import TYPED_URL_CAUTION
-        from gemini_bridge.transcript import TranscriptWriter
-        from gemini_bridge.workspace import build_workspace
+        from sidekick.client import GeminiClient
+        from sidekick.server import build_server
+        from sidekick.sources import TYPED_URL_CAUTION
+        from sidekick.transcript import TranscriptWriter
+        from sidekick.workspace import build_workspace
 
         cfg = Config(auth={"method": "api_key"})
         with patch("google.genai.Client"):
@@ -667,7 +667,7 @@ class TestSourcesReachTheCaller:
         transcript = TranscriptWriter(str(tmp_path / "t"), datetime.now())
         mcp = build_server(client, transcript, build_workspace(cfg, tmp_path))
         resolver = AsyncMock(return_value={REDIRECT: "https://www.python.org/downloads/"})
-        with patch("gemini_bridge.tools.base.resolve_redirects", resolver):
+        with patch("sidekick.tools.base.resolve_redirects", resolver):
             result = await mcp.call_tool("gemini_ask", {"prompt": "p", "web": True})
         blocks = result[0] if isinstance(result, tuple) else result
         text = "".join(getattr(b, "text", "") for b in blocks)  # type: ignore[union-attr]
@@ -680,10 +680,10 @@ class TestSourcesReachTheCaller:
         from datetime import datetime
         from unittest.mock import AsyncMock
 
-        from gemini_bridge.client import GeminiClient
-        from gemini_bridge.server import build_server
-        from gemini_bridge.transcript import TranscriptWriter
-        from gemini_bridge.workspace import build_workspace
+        from sidekick.client import GeminiClient
+        from sidekick.server import build_server
+        from sidekick.transcript import TranscriptWriter
+        from sidekick.workspace import build_workspace
         from tests.test_tools import _text_response
 
         cfg = Config(auth={"method": "api_key"})
@@ -704,7 +704,7 @@ class TestSourcesReachTheCaller:
         http.assert_not_called()
 
     def test_gemini_is_told_not_to_type_urls(self) -> None:
-        from gemini_bridge.tools.base import _WEB_PREAMBLE
+        from sidekick.tools.base import _WEB_PREAMBLE
 
         assert "Do not write out URLs" in _WEB_PREAMBLE
         assert "Cite the sources" not in _WEB_PREAMBLE

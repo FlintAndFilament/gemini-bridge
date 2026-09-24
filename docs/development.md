@@ -32,7 +32,7 @@ claude --plugin-dir .
 
 Runs the plugin straight from this checkout — no marketplace, no install step. `uv` builds the
 plugin's own venv at `${CLAUDE_PLUGIN_DATA}/venv` on first launch and reuses it after. Inside
-that session, run `/sidekick:setup` to write `~/.config/gemini-bridge/config.json`, then call
+that session, run `/sidekick:setup` to write `~/.config/sidekick/config.json`, then call
 any `gemini_*` tool (or `gemini_help`) to confirm the `gemini` MCP server connected.
 
 Whenever you add or change a dependency in `pyproject.toml`, run `uv lock`. `uv.lock` is
@@ -53,10 +53,10 @@ Claude Code conversation can show tool schemas from before the restart.
 The server writes to a daily log file (the 4 most recent are kept):
 
 ```bash
-tail -f ~/.config/gemini-bridge/logs/$(ls -t ~/.config/gemini-bridge/logs/*.log | head -1 | xargs basename)
+tail -f ~/.config/sidekick/logs/$(ls -t ~/.config/sidekick/logs/*.log | head -1 | xargs basename)
 ```
 
-Set `GEMINI_BRIDGE_LOG_LEVEL=DEBUG` before starting Claude Code for per-call detail. See [logging.md](logging.md) for full reference.
+Set `SIDEKICK_LOG_LEVEL=DEBUG` before starting Claude Code for per-call detail. See [logging.md](logging.md) for full reference.
 
 ## Code quality
 
@@ -97,15 +97,15 @@ Each job declares least-privilege permissions (#72).
 
 ## Adding a new tool
 
-1. Create `src/gemini_bridge/tools/{name}.py` following an existing tool file. Required: the
+1. Create `src/sidekick/tools/{name}.py` following an existing tool file. Required: the
    file header docstring, a system prompt, `_WRITE` and `_ARTIFACTS` values, a `CAPABILITY`
    row, and `register(mcp, client, transcript, workspace)`. The body calls `call_gemini()`.
 
-2. In `src/gemini_bridge/tools/__init__.py`, import its `register` and `CAPABILITY`, add the
+2. In `src/sidekick/tools/__init__.py`, import its `register` and `CAPABILITY`, add the
    capability to `CAPABILITIES`, and add the register function to `__all__`.
 
 3. Call `register_{name}(mcp, client, transcript, workspace)` in
-   `src/gemini_bridge/server.py`.
+   `src/sidekick/server.py`.
 
 4. Add tests to `tests/test_tools.py`: at minimum, the tool registers, and `call_gemini()`
    errors pass through. `tests/test_capability_metadata.py` and `tests/test_guide.py` cover

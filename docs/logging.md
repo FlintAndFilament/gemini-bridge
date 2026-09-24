@@ -1,12 +1,12 @@
 # Logging
 
-sidekick's MCP server (gemini-bridge) writes structured logs to a daily file. Claude Code swallows MCP server
+sidekick's MCP server writes structured logs to a daily file. Claude Code swallows MCP server
 stderr — the file is the only way to see what the server is doing.
 
 ## Log file location
 
 ```
-~/.config/gemini-bridge/logs/YYYYMMDD-gemini-bridge.log
+~/.config/sidekick/logs/YYYYMMDD-sidekick.log
 ```
 
 - One file per calendar day, named by the day the server started
@@ -15,7 +15,7 @@ stderr — the file is the only way to see what the server is doing.
 - At startup, all but the four newest log files are deleted, then today's file is opened — so
   there are four or five files at any time
 - The same lines also go to stderr, which is useful only when running the server by hand
-- The bridge's own loggers (`gemini_bridge.*`) are written in full. The libraries (`google`, `google_genai`, `httpx`, `httpcore`, `urllib3`) are written at WARNING and
+- The bridge's own loggers (`sidekick.*`) are written in full. The libraries (`google`, `google_genai`, `httpx`, `httpcore`, `urllib3`) are written at WARNING and
   above, or in full at `DEBUG` (#88)
 - Records carrying a google-auth HTTP payload (`httpRequest`/`httpResponse`, which hold raw
   request headers and bodies) are dropped before reaching either handler, so no bearer token or
@@ -25,12 +25,12 @@ stderr — the file is the only way to see what the server is doing.
 ## Tail live
 
 ```bash
-tail -f ~/.config/gemini-bridge/logs/$(ls -t ~/.config/gemini-bridge/logs/*.log | head -1 | xargs basename)
+tail -f ~/.config/sidekick/logs/$(ls -t ~/.config/sidekick/logs/*.log | head -1 | xargs basename)
 ```
 
 ## Log levels
 
-Set via `GEMINI_BRIDGE_LOG_LEVEL` environment variable before starting Claude Code
+Set via `SIDEKICK_LOG_LEVEL` environment variable before starting Claude Code
 (`DEBUG`, `INFO`, `WARNING`, `ERROR`; case-insensitive). Default: `INFO`; an unrecognized value
 also means `INFO`.
 
@@ -45,10 +45,10 @@ also means `INFO`.
 
 **Normal startup (INFO), api_key backend:**
 ```
-[gemini-bridge] 23:28:31 INFO     gemini_bridge.__main__: starting — auth=api_key default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
-[gemini-bridge] 23:28:31 INFO     gemini_bridge.__main__: latest models: flash=gemini-3.8-flash, pro=gemini-3.1-pro-preview, flash-lite=gemini-3.5-flash-lite
-[gemini-bridge] 23:28:31 INFO     gemini_bridge.__main__: transcript → /Users/you/dev/my-project/session-summaries/20260921-2328-gemini-bridge-transcript.md
-[gemini-bridge] 23:28:31 INFO     gemini_bridge.__main__: file tools enabled — sandbox root /Users/you/dev/my-project — artifacts → /Users/you/dev/my-project/gemini-artifacts
+[sidekick] 23:28:31 INFO     sidekick.__main__: starting — auth=api_key default_thinking=medium default_model=gemini-3.8-flash fallback_model=gemini-3.5-flash-lite
+[sidekick] 23:28:31 INFO     sidekick.__main__: latest models: flash=gemini-3.8-flash, pro=gemini-3.1-pro-preview, flash-lite=gemini-3.5-flash-lite
+[sidekick] 23:28:31 INFO     sidekick.__main__: transcript → /Users/you/dev/my-project/session-summaries/20260921-2328-sidekick-transcript.md
+[sidekick] 23:28:31 INFO     sidekick.__main__: file tools enabled — sandbox root /Users/you/dev/my-project — artifacts → /Users/you/dev/my-project/gemini-artifacts
 ```
 
 On a Vertex backend the first line reads `auth=<method> location=<location>` instead (e.g.
@@ -58,16 +58,16 @@ On a Vertex backend the first line reads `auth=<method> location=<location>` ins
 
 **Auth failure (ERROR):**
 ```
-[gemini-bridge] 17:50:10 ERROR    gemini_bridge.auth: keychain item not found (service='gemini-bridge', account='vertex-sa')
-[gemini-bridge] 17:50:10 ERROR    gemini_bridge.__main__: startup failed — auth error: …
+[sidekick] 17:50:10 ERROR    sidekick.auth: keychain item not found (service='sidekick', account='vertex-sa')
+[sidekick] 17:50:10 ERROR    sidekick.__main__: startup failed — auth error: …
 ```
 
 **Debug mode (DEBUG):**
 ```
-[gemini-bridge] 17:50:15 DEBUG    gemini_bridge.tools.base: gemini_brainstorm session='default' model=default thinking=medium
-[gemini-bridge] 17:50:15 DEBUG    gemini_bridge.client: ask: model=gemini-3.8-flash thinking=medium prompt_len=142 tools=5 web=False
-[gemini-bridge] 17:50:19 DEBUG    gemini_bridge.client: response_len=847
-[gemini-bridge] 17:50:19 DEBUG    gemini_bridge.tools.base: gemini_brainstorm session='default' OK
+[sidekick] 17:50:15 DEBUG    sidekick.tools.base: gemini_brainstorm session='default' model=default thinking=medium
+[sidekick] 17:50:15 DEBUG    sidekick.client: ask: model=gemini-3.8-flash thinking=medium prompt_len=142 tools=5 web=False
+[sidekick] 17:50:19 DEBUG    sidekick.client: response_len=847
+[sidekick] 17:50:19 DEBUG    sidekick.tools.base: gemini_brainstorm session='default' OK
 ```
 
 `model=default` on the first line means the call omitted `model`; the `ask:` line shows the
@@ -78,7 +78,7 @@ concrete model it resolved to. `tools=` counts the file tools offered to Gemini 
 
 Add to your shell before launching Claude Code:
 ```bash
-export GEMINI_BRIDGE_LOG_LEVEL=DEBUG
+export SIDEKICK_LOG_LEVEL=DEBUG
 claude
 ```
 

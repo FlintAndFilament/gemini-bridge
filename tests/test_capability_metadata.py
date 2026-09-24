@@ -15,13 +15,13 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.config import Config
-from gemini_bridge.guide import help_text
-from gemini_bridge.server import build_server, server_instructions
-from gemini_bridge.tools.base import capability_hint, tool_annotations
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace, build_workspace
+from sidekick.client import GeminiClient
+from sidekick.config import Config
+from sidekick.guide import help_text
+from sidekick.server import build_server, server_instructions
+from sidekick.tools.base import capability_hint, tool_annotations
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace, build_workspace
 from tests.test_tools import _text_response
 
 READ_TOOL_NAMES = ("list_dir", "glob", "grep", "read_file")
@@ -371,7 +371,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
     """#74 review: server.py hardcoded which tools write; `_WRITE` is the source of truth."""
 
     def test_rows_match_the_exported_capability_set(self, tmp_path: Path) -> None:
-        from gemini_bridge.tools import CAPABILITIES
+        from sidekick.tools import CAPABILITIES
 
         text = _full(_workspace(tmp_path))
         read_line = next(ln for ln in text.splitlines() if "cannot modify the working tree" in ln)
@@ -381,7 +381,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
             assert cap.name not in (read_line if cap.write else write_line)
 
     def test_artifact_line_matches_the_exported_modes(self, tmp_path: Path) -> None:
-        from gemini_bridge.tools import CAPABILITIES
+        from sidekick.tools import CAPABILITIES
 
         # "Markdown artifact", not "artifact": pytest derives tmp_path from the test name,
         # so the sandbox-root line can contain the bare word.
@@ -396,7 +396,7 @@ class TestAdvertisedRowsComeFromTheToolModules:
 
     def test_capability_rows_match_each_tools_declared_write_flag(self) -> None:
         """The exported rows must agree with what build_file_registry is actually handed."""
-        from gemini_bridge.tools import CAPABILITIES
+        from sidekick.tools import CAPABILITIES
 
         assert {c.name for c in CAPABILITIES} == set(GENERATING_TOOLS)
         assert {c.name for c in CAPABILITIES if c.write} == set(WRITE_TOOLS)
@@ -429,7 +429,7 @@ class TestNoHandWrittenRestatements:
 
     def test_read_tool_names_come_from_the_declarations(self, tmp_path: Path) -> None:
         """Adding a read declaration must change the advertised list, not silently diverge."""
-        from gemini_bridge.file_tools import READ_TOOL_NAMES
+        from sidekick.file_tools import READ_TOOL_NAMES
 
         ws = _workspace(tmp_path)
         registry = ws.registry(write=False)
@@ -442,7 +442,7 @@ class TestNoHandWrittenRestatements:
             assert name in hint and name in text
 
     def test_write_tool_name_comes_from_the_declaration(self, tmp_path: Path) -> None:
-        from gemini_bridge.file_tools import READ_TOOL_NAMES, WRITE_TOOL_NAME
+        from sidekick.file_tools import READ_TOOL_NAMES, WRITE_TOOL_NAME
 
         ws = _workspace(tmp_path)
         registry = ws.registry(write=True)
@@ -452,7 +452,7 @@ class TestNoHandWrittenRestatements:
         assert WRITE_TOOL_NAME in capability_hint(ws, write=True)
 
     def test_result_caps_are_the_enforced_constants(self, tmp_path: Path) -> None:
-        from gemini_bridge import file_tools as ft
+        from sidekick import file_tools as ft
 
         text = _full(_workspace(tmp_path))
         assert str(ft.LIST_MAX_ENTRIES) in text
@@ -474,12 +474,12 @@ class TestInstructionsStayWellFormed:
     """The rows are built from a mutable capability set; the prose must survive any of them."""
 
     def _always_writes_line(self, caps: object, tmp_path: Path) -> str:
-        with patch("gemini_bridge.guide.CAPABILITIES", caps):
+        with patch("sidekick.guide.CAPABILITIES", caps):
             text = _full(_workspace(tmp_path))
         return next(ln for ln in text.splitlines() if "Markdown artifact" in ln)
 
     def test_no_dangling_verb_when_nothing_saves_by_default(self, tmp_path: Path) -> None:
-        from gemini_bridge.tools.base import ToolCapability
+        from sidekick.tools.base import ToolCapability
 
         caps = (
             ToolCapability("gemini_ask", write=False, artifacts="never"),
@@ -491,15 +491,15 @@ class TestInstructionsStayWellFormed:
         assert "gemini_review saves the answer" in line
 
     def test_no_artifact_line_when_no_tool_saves_one(self, tmp_path: Path) -> None:
-        from gemini_bridge.tools.base import ToolCapability
+        from sidekick.tools.base import ToolCapability
 
         caps = (ToolCapability("gemini_ask", write=False, artifacts="never"),)
-        with patch("gemini_bridge.guide.CAPABILITIES", caps):
+        with patch("sidekick.guide.CAPABILITIES", caps):
             text = _full(_workspace(tmp_path))
         assert "Markdown artifact" not in text
 
     def test_skipped_row_reads_as_nothing_when_all_are_denied(self, tmp_path: Path) -> None:
-        from gemini_bridge.sandbox import WALK_SKIP_DIRS
+        from sidekick.sandbox import WALK_SKIP_DIRS
 
         ws = _workspace(
             tmp_path, deny=[f"**/{name}/**" for name in WALK_SKIP_DIRS] + list(WALK_SKIP_DIRS)
@@ -534,7 +534,7 @@ class TestHelpText:
     def test_session_name_shares_one_base_on_every_tool(self, tmp_path: Path) -> None:
         """Five hand-written copies drifted: gemini_ask's said 'v1: always default' long after
         session names started working. Every tool now starts from one shared base."""
-        from gemini_bridge.tools.base import _SESSION_BASE
+        from sidekick.tools.base import _SESSION_BASE
 
         for tool in GENERATING_TOOLS:
             assert self._params(tmp_path, tool)["session_name"].startswith(_SESSION_BASE)
@@ -560,7 +560,7 @@ class TestHelpText:
         assert "new session_name" in (described or "")
 
     def test_session_name_description_is_accurate(self, tmp_path: Path) -> None:
-        from gemini_bridge.client import MAX_SESSIONS
+        from sidekick.client import MAX_SESSIONS
 
         text = self._params(tmp_path, "gemini_ask")["session_name"]
         assert "always 'default'" not in text
@@ -578,7 +578,7 @@ class TestHelpText:
     def test_choosing_a_tool_lists_every_tool_with_its_own_description(
         self, tmp_path: Path
     ) -> None:
-        from gemini_bridge.tools import CAPABILITIES
+        from sidekick.tools import CAPABILITIES
 
         text = _full(_workspace(tmp_path))
         assert "Choosing a tool:" in text
@@ -587,7 +587,7 @@ class TestHelpText:
 
     def test_tool_guide_reuses_the_registered_description(self, tmp_path: Path) -> None:
         """No restatement: the guide line must be the same words the tool itself advertises."""
-        from gemini_bridge.tools import CAPABILITIES
+        from sidekick.tools import CAPABILITIES
 
         tools = _tools(_server(tmp_path, _workspace(tmp_path)))
         for cap in CAPABILITIES:

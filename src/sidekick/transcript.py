@@ -1,5 +1,5 @@
 """
-gemini_bridge/transcript.py
+sidekick/transcript.py
 ----------------------------
 Append tool exchanges to a session transcript file in Markdown format.
 
@@ -61,10 +61,10 @@ class TranscriptWriter:
             reason = getattr(exc, "strerror", None) or exc
             raise TranscriptError(
                 f"Transcript directory cannot be used: {config_transcript_dir} ({reason}).\n"
-                "Fix: set transcript_dir in ~/.config/gemini-bridge/config.json to a writable "
+                "Fix: set transcript_dir in ~/.config/sidekick/config.json to a writable "
                 "path, or run /sidekick:setup in Claude Code."
             ) from exc
-        filename = startup_time.strftime("%Y%m%d-%H%M-gemini-bridge-transcript.md")
+        filename = startup_time.strftime("%Y%m%d-%H%M-sidekick-transcript.md")
         self._path = transcript_dir / filename
 
     @property

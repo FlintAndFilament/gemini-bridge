@@ -1,12 +1,12 @@
-"""Tests for run_tool_loop() in gemini_bridge/tool_loop.py — driven by a scripted fake model."""
+"""Tests for run_tool_loop() in sidekick/tool_loop.py — driven by a scripted fake model."""
 
 from typing import Any
 
 import pytest
 from google.genai import types
 
-from gemini_bridge.errors import ClientError
-from gemini_bridge.tool_loop import (
+from sidekick.errors import ClientError
+from sidekick.tool_loop import (
     BUDGET_EXHAUSTED_PROMPT,
     ToolCallRecord,
     ToolRegistry,
@@ -198,25 +198,25 @@ class TestSummarize:
     def test_write_reports_the_file_size_not_the_response_size(self) -> None:
         """A 5-byte write used to log as '50 B' — the size of the JSON acknowledgement,
         which a reader naturally takes for the size of the file."""
-        from gemini_bridge.tool_loop import summarize
+        from sidekick.tool_loop import summarize
 
         ok, summary = summarize({"path": "probe.txt", "bytes_written": 5})
         assert ok is True
         assert summary == "wrote 5 B"
 
     def test_large_write_uses_kib(self) -> None:
-        from gemini_bridge.tool_loop import summarize
+        from sidekick.tool_loop import summarize
 
         assert summarize({"path": "big.txt", "bytes_written": 4096})[1] == "wrote 4.0 KiB"
 
     def test_empty_write_is_reported_honestly(self) -> None:
-        from gemini_bridge.tool_loop import summarize
+        from sidekick.tool_loop import summarize
 
         assert summarize({"path": "empty.txt", "bytes_written": 0})[1] == "wrote 0 B"
 
     def test_reads_still_report_what_came_back_into_context(self) -> None:
         """For reads the response size is the useful number: it is what the call cost."""
-        from gemini_bridge.tool_loop import summarize
+        from sidekick.tool_loop import summarize
 
         ok, summary = summarize({"content": "x" * 2048})
         assert ok is True
@@ -224,6 +224,6 @@ class TestSummarize:
         assert not summary.startswith("wrote")
 
     def test_errors_are_unchanged(self) -> None:
-        from gemini_bridge.tool_loop import summarize
+        from sidekick.tool_loop import summarize
 
         assert summarize({"error": "rejected: denied"}) == (False, "rejected: denied")

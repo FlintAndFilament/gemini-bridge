@@ -1,4 +1,4 @@
-"""Tests for gemini_bridge/config.py — Config model, load_config(), ConfigError."""
+"""Tests for sidekick/config.py — Config model, load_config(), ConfigError."""
 
 import json
 import tempfile
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from gemini_bridge.config import Config, ConfigError, load_config
+from sidekick.config import Config, ConfigError, load_config
 
 
 def _write_config(path: Path, data: dict) -> None:
@@ -67,12 +67,12 @@ def test_load_config_missing_project() -> None:
 def test_config_keychain_auth_defaults() -> None:
     cfg = Config(project="p", auth={"method": "keychain"})
     assert cfg.auth.method == "keychain"
-    assert cfg.auth.keychain_service == "gemini-bridge"
+    assert cfg.auth.keychain_service == "sidekick"
     assert cfg.auth.keychain_account == "vertex-sa"
 
 
 def test_adc_config_keychain_fields_are_none() -> None:
-    from gemini_bridge.config import AuthConfig
+    from sidekick.config import AuthConfig
 
     cfg = AuthConfig(method="adc")
     assert cfg.keychain_service is None
@@ -80,7 +80,7 @@ def test_adc_config_keychain_fields_are_none() -> None:
 
 
 def test_env_config_keychain_fields_are_none() -> None:
-    from gemini_bridge.config import AuthConfig
+    from sidekick.config import AuthConfig
 
     cfg = AuthConfig(method="env")
     assert cfg.keychain_service is None
@@ -88,7 +88,7 @@ def test_env_config_keychain_fields_are_none() -> None:
 
 
 def test_keychain_explicit_service_account_preserved() -> None:
-    from gemini_bridge.config import AuthConfig
+    from sidekick.config import AuthConfig
 
     cfg = AuthConfig(method="keychain", keychain_service="my-svc", keychain_account="my-acct")
     assert cfg.keychain_service == "my-svc"
@@ -112,14 +112,14 @@ def test_default_model_accepts_value() -> None:
 
 
 def test_api_key_env_default() -> None:
-    from gemini_bridge.config import AuthConfig
+    from sidekick.config import AuthConfig
 
     cfg = AuthConfig(method="api_key")
     assert cfg.api_key_env == "GEMINI_API_KEY"
 
 
 def test_api_key_custom_env_preserved() -> None:
-    from gemini_bridge.config import AuthConfig
+    from sidekick.config import AuthConfig
 
     cfg = AuthConfig(method="api_key", api_key_env="GOOGLE_API_KEY")
     assert cfg.api_key_env == "GOOGLE_API_KEY"
@@ -142,7 +142,7 @@ def test_config_location_override_accepted() -> None:
 
 
 def test_file_tools_defaults() -> None:
-    from gemini_bridge.sandbox import DEFAULT_DENY
+    from sidekick.sandbox import DEFAULT_DENY
 
     cfg = Config(auth={"method": "api_key"})
     assert cfg.artifacts_dir == "./gemini-artifacts"

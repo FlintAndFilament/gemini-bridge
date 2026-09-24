@@ -1,18 +1,18 @@
-"""Tests for gemini_bridge/client.py — GeminiClient session management and ask()."""
+"""Tests for sidekick/client.py — GeminiClient session management and ask()."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from google.genai import types
 
-from gemini_bridge.client import (
+from sidekick.client import (
     DEFAULT_MODEL,
     MAX_SESSIONS,
     ClientError,
     GeminiClient,
     Session,
 )
-from gemini_bridge.config import Config
+from sidekick.config import Config
 
 
 def _make_client() -> GeminiClient:
@@ -179,7 +179,7 @@ class TestAsk:
             client, side_effect=[RuntimeError("503 UNAVAILABLE"), _text_response("ok")]
         )
         session = client.get_or_create_session()
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             result = await client.ask(session, "Hello", "low")
         assert result == "ok"
         assert gen.await_count == 2
@@ -188,7 +188,7 @@ class TestAsk:
         client = _make_client()
         _mock_generate(client, side_effect=RuntimeError("503 UNAVAILABLE"))
         session = client.get_or_create_session()
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()):
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()):
             with pytest.raises(ClientError, match="after 4 attempt"):
                 await client.ask(session, "Hello", "low")
 
@@ -196,7 +196,7 @@ class TestAsk:
         client = _make_client()
         gen = _mock_generate(client, side_effect=RuntimeError("400 INVALID_ARGUMENT"))
         session = client.get_or_create_session()
-        with patch("gemini_bridge.client.asyncio.sleep", new=AsyncMock()) as mock_sleep:
+        with patch("sidekick.client.asyncio.sleep", new=AsyncMock()) as mock_sleep:
             with pytest.raises(ClientError):
                 await client.ask(session, "Hello", "low")
         mock_sleep.assert_not_awaited()
@@ -281,14 +281,14 @@ class TestDefaultModel:
             return GeminiClient(config, MagicMock())
 
     def test_falls_back_to_builtin_when_unset(self) -> None:
-        from gemini_bridge.client import DEFAULT_MODEL
+        from sidekick.client import DEFAULT_MODEL
 
         assert self._client_with_default().default_model == DEFAULT_MODEL
 
     def test_fallback_model_is_flash_lite_and_differs_from_default(self) -> None:
         # #58: FALLBACK_MODEL must be a long-lived GA model distinct from the default so the
         # 503/429 safety net actually substitutes something.
-        from gemini_bridge.client import DEFAULT_MODEL, FALLBACK_MODEL
+        from sidekick.client import DEFAULT_MODEL, FALLBACK_MODEL
 
         assert FALLBACK_MODEL == "gemini-3.1-flash-lite"
         assert FALLBACK_MODEL != DEFAULT_MODEL
@@ -324,7 +324,7 @@ def _call_response(name: str, args: dict) -> types.GenerateContentResponse:  # t
 
 
 def _echo_registry():  # type: ignore[no-untyped-def]
-    from gemini_bridge.tool_loop import ToolRegistry
+    from sidekick.tool_loop import ToolRegistry
 
     reg = ToolRegistry()
 
@@ -412,7 +412,7 @@ class TestLatestResolution:
         assert _resolved_client().fallback_model == "gemini-3.5-flash-lite"
 
     def test_unresolved_client_uses_pinned_constants(self) -> None:
-        from gemini_bridge.client import FALLBACK_MODEL
+        from sidekick.client import FALLBACK_MODEL
 
         client = _make_client()
         assert client.default_model == DEFAULT_MODEL
@@ -570,13 +570,13 @@ class TestPreviewWarning:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         client = _resolved_client()
-        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+        with caplog.at_level("WARNING", logger="sidekick.client"):
             client.get_or_create_session("x", model="pro")
         assert "preview model" not in caplog.text
 
     def test_explicit_preview_id_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         client = _resolved_client()
-        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+        with caplog.at_level("WARNING", logger="sidekick.client"):
             client.get_or_create_session("x", model="gemini-3.1-pro-preview")
         assert "preview model" in caplog.text
 
@@ -592,7 +592,7 @@ class TestSelfHealLogging:
             ],
         )
         session = client.get_or_create_session(model="gemini-3.8-flash")
-        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+        with caplog.at_level("WARNING", logger="sidekick.client"):
             await client.ask(session, "q", "none")
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
@@ -630,7 +630,7 @@ class TestReviewFindings69:
             client = GeminiClient(config, api_key="k")
         client._raw_client.models.list.return_value = _catalog("gemini-3.9-flash-preview")
         client.refresh_latest()
-        with caplog.at_level("WARNING", logger="gemini_bridge.client"):
+        with caplog.at_level("WARNING", logger="sidekick.client"):
             client.get_or_create_session("x")
         assert "preview model" not in caplog.text
 

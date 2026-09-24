@@ -1,5 +1,5 @@
 """
-gemini_bridge/models.py
+sidekick/models.py
 -----------------------
 Single source of truth for backend-aware model discoverability.
 

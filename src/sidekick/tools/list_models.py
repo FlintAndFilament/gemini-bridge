@@ -1,5 +1,5 @@
 """
-gemini_bridge/tools/list_models.py
+sidekick/tools/list_models.py
 ------------------------------------
 MCP tool: gemini_list_models — the authoritative, live, backend-scoped model list.
 
@@ -26,10 +26,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from gemini_bridge import models
-from gemini_bridge.client import ClientError, GeminiClient
-from gemini_bridge.tools.base import ToolResult
-from gemini_bridge.transcript import TranscriptWriter
+from sidekick import models
+from sidekick.client import ClientError, GeminiClient
+from sidekick.tools.base import ToolResult
+from sidekick.transcript import TranscriptWriter
 
 _TOOL_NAME = "gemini_list_models"
 # Exported so server.py can say, truthfully, that this one call writes nothing (#74).
@@ -108,7 +108,7 @@ def format_static_fallback(backend: str, default_model: str, reason: str) -> str
     rows = models.shortlist(backend)
     width = max(len(model_id) for model_id, _ in rows)
     lines = [
-        f"[gemini-bridge notice] Live model list unavailable ({reason}). "
+        f"[sidekick notice] Live model list unavailable ({reason}). "
         "Showing the curated recommended shortlist instead.",
         "",
         f"Recommended Gemini chat models on {backend_label}:",
@@ -170,7 +170,7 @@ def register(mcp: FastMCP, client: GeminiClient, transcript: TranscriptWriter) -
         if refresh or "text" not in cache:
             text = render_model_list(client, backend)
             # Only cache authoritative live results; a degraded fallback should retry next call.
-            if not text.startswith("[gemini-bridge notice]"):
+            if not text.startswith("[sidekick notice]"):
                 cache["text"] = text
             return text
         return cache["text"]

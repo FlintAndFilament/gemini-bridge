@@ -1,5 +1,5 @@
 """
-gemini_bridge/client.py
+sidekick/client.py
 ------------------------
 Gemini chat session manager and unified ask() interface.
 
@@ -45,11 +45,11 @@ from google.genai import types
 from google.genai.types import GenerateContentConfig, ThinkingConfig
 from google.genai.types import ThinkingLevel as SDKThinkingLevel
 
-from gemini_bridge import models
-from gemini_bridge.config import Config, ModelFamily, ThinkingLevel
-from gemini_bridge.errors import ClientError
-from gemini_bridge.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
-from gemini_bridge.web_tools import web_tool_set
+from sidekick import models
+from sidekick.config import Config, ModelFamily, ThinkingLevel
+from sidekick.errors import ClientError
+from sidekick.tool_loop import ToolCallRecord, ToolRegistry, run_tool_loop
+from sidekick.web_tools import web_tool_set
 
 __all__ = ["ClientError", "GeminiClient", "Session", "DEFAULT_MODEL", "FALLBACK_MODEL"]
 

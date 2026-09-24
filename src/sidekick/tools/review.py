@@ -1,19 +1,19 @@
 """
-gemini_bridge/tools/brainstorm.py
-----------------------------------
-MCP tool: gemini_brainstorm — divergent ideation and devil's advocate thinking.
+sidekick/tools/review.py
+------------------------------
+MCP tool: gemini_review — critical code and design review.
 
 Responsibilities:
-  - Register the gemini_brainstorm MCP tool with the server
-  - Accept topic + optional context and thinking level
-  - Return Gemini's divergent, challenge-first brainstorming response
+  - Register the gemini_review MCP tool with the server
+  - Accept content (code/design/plan) + optional focused question and thinking level
+  - Return Gemini's critical, severity-prioritized review
 
 Design notes:
-  - Single Responsibility: tool registration + brainstorm persona only
+  - Single Responsibility: tool registration + review persona only
   - Open/Closed: system prompt changes do not affect other tools
-  - System prompt: unconventional, challenges current direction, plays devil's advocate
+  - System prompt: pessimistic, rigorous — finds problems and prioritizes by severity
 
-Used by:  tools/__init__.py -> register_brainstorm(), server.py (via tools/__init__)
+Used by:  tools/__init__.py -> register_review(), server.py (via tools/__init__)
 Imports:  tools/base.py (call_gemini), client.py (GeminiClient), transcript.py (TranscriptWriter)
 """
 
@@ -22,9 +22,9 @@ from typing import Annotated, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from gemini_bridge.client import GeminiClient
-from gemini_bridge.config import ThinkingLevel
-from gemini_bridge.tools.base import (
+from sidekick.client import GeminiClient
+from sidekick.config import ThinkingLevel
+from sidekick.tools.base import (
     ArtifactMode,
     ToolCapability,
     ToolResult,
@@ -34,27 +34,27 @@ from gemini_bridge.tools.base import (
     session_param_hint,
     tool_annotations,
 )
-from gemini_bridge.transcript import TranscriptWriter
-from gemini_bridge.workspace import Workspace
+from sidekick.transcript import TranscriptWriter
+from sidekick.workspace import Workspace
 
 _SYSTEM_PROMPT = (
-    "You are a creative thinking partner working alongside Claude, another AI. "
-    "Push unconventional approaches. Challenge Claude's existing direction. "
-    "Play devil's advocate when useful. Offer alternatives even when the current path seems fine. "
-    "Be concise."
+    "You are a critical technical reviewer working alongside Claude, another AI. "
+    "Find problems, risks, and weaknesses in code, designs, and plans. "
+    "Be direct. Don't soften feedback. Prioritize by severity. "
+    "If something is sound, say so briefly and move on."
 )
 
-_TOOL_NAME = "gemini_brainstorm"
+_TOOL_NAME = "gemini_review"
 # Capability row (#68): read + write_file.
 _WRITE = True
 
-# Artifact only when the caller passes write_artifact=true.
-_ARTIFACTS: ArtifactMode = "opt-in"
+# Artifact saved unless the caller passes write_artifact=false.
+_ARTIFACTS: ArtifactMode = "default"
 
 # Advertised to the MCP client; capability_hint() appends the file-tool row (#74).
 _DESCRIPTION = (
-    "Ask Gemini for unconventional ideas and alternatives. Gemini will challenge the "
-    "current direction and play devil's advocate."
+    "Ask Gemini to critically review code, a design, or a plan. Gemini will find "
+    "problems and prioritize by severity."
 )
 
 
@@ -71,7 +71,7 @@ def register(
     transcript: TranscriptWriter,
     workspace: Optional[Workspace] = None,
 ) -> None:
-    """Register gemini_brainstorm with the MCP server."""
+    """Register gemini_review with the MCP server."""
     model_hint = model_param_hint(client)
 
     @mcp.tool(
@@ -85,13 +85,11 @@ def register(
         ),
         annotations=tool_annotations(workspace, write=_WRITE),
     )
-    async def gemini_brainstorm(
-        topic: Annotated[str, Field(description="The topic or problem to brainstorm about")],
-        context: Annotated[
+    async def gemini_review(
+        content: Annotated[str, Field(description="The code, design, or plan to review")],
+        question: Annotated[
             str,
-            Field(
-                description="Optional context: what Claude is currently doing or has already considered."
-            ),
+            Field(description="Optional specific question to focus the review on."),
         ] = "",
         thinking: Annotated[
             Optional[ThinkingLevel],
@@ -119,12 +117,12 @@ def register(
             Field(
                 description=(
                     "Save the response as a timestamped Markdown file in the artifacts "
-                    "directory (default false). Set true to keep the ideas."
+                    "directory (default true). Set false to skip."
                 )
             ),
-        ] = False,
+        ] = True,
     ) -> ToolResult:
-        full_prompt = topic if not context else f"{topic}\n\nContext: {context}"
+        full_prompt = content if not question else f"{content}\n\nFocus: {question}"
         return await call_gemini(
             client=client,
             transcript=transcript,
@@ -137,5 +135,5 @@ def register(
             workspace=workspace,
             write=_WRITE,
             web=web,
-            artifact_topic=(topic) if write_artifact else None,
+            artifact_topic=(question or content) if write_artifact else None,
         )
