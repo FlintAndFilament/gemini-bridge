@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from gemini_bridge.config import Config
 from gemini_bridge.workspace import build_workspace
 
@@ -90,3 +92,23 @@ def test_file_tools_enabled_in_project_under_home(tmp_path: Path, monkeypatch: o
     project.mkdir(parents=True)
     ws = build_workspace(_config(), project)
     assert ws.registry(write=False) is not None and ws.disabled_reason is None
+
+
+class TestProjectRoot:
+    """Plugin servers get CLAUDE_PROJECT_DIR; the cwd is not a documented contract (#102)."""
+
+    def test_uses_claude_project_dir_when_it_is_a_directory(self, tmp_path: Path) -> None:
+        from gemini_bridge.workspace import project_root
+
+        assert project_root({"CLAUDE_PROJECT_DIR": str(tmp_path)}) == tmp_path.resolve()
+
+    def test_falls_back_to_cwd_when_unset(self) -> None:
+        from gemini_bridge.workspace import project_root
+
+        assert project_root({}) == Path.cwd().resolve()
+
+    @pytest.mark.parametrize("value", ["", "/no/such/dir/for/sidekick"])
+    def test_falls_back_to_cwd_when_empty_or_missing(self, value: str) -> None:
+        from gemini_bridge.workspace import project_root
+
+        assert project_root({"CLAUDE_PROJECT_DIR": value}) == Path.cwd().resolve()

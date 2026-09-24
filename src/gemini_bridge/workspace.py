@@ -24,6 +24,8 @@ Used by:  __main__.py (build_workspace), tools/base.py (Workspace)
 Imports:  config.py, sandbox.py, file_tools.py, tool_loop.py, artifacts.py
 """
 
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -79,3 +81,14 @@ def _unsafe_root_reason(root: Path) -> Optional[str]:
     if home.is_relative_to(root):
         return f"launch directory {root} contains your home directory"
     return None
+
+
+def project_root(environ: Optional[Mapping[str, str]] = None) -> Path:
+    """The project the server works in: CLAUDE_PROJECT_DIR when Claude Code set it to a real
+    directory, otherwise the working directory. Claude Code documents CLAUDE_PROJECT_DIR as the
+    stable root for spawned MCP servers; the cwd only happens to match it today (#102)."""
+    env = os.environ if environ is None else environ
+    value = env.get("CLAUDE_PROJECT_DIR", "").strip()
+    if value and Path(value).is_dir():
+        return Path(value).resolve()
+    return Path.cwd().resolve()
