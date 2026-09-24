@@ -10,6 +10,3 @@
 | [logging.md](logging.md) | Log file location, levels, tail command, rotation, debug mode |
 | [development.md](development.md) | Dev setup, the system-Python live install, tests, lint and types, CI workflows, adding a new tool, branching workflow |
 | [roadmap.md](roadmap.md) | Features by release, with rationale and shipped status |
-
-Design specs and implementation plans for larger features live in
-[superpowers/specs/](superpowers/specs/) and [superpowers/plans/](superpowers/plans/).
