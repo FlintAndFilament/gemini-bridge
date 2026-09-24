@@ -137,7 +137,7 @@ Repackaged as a Claude Code plugin, `sidekick`, installed with `/plugin marketpl
 `/plugin install` instead of a manual clone and `claude mcp add`. `setup.sh` is gone;
 `/sidekick:setup` (a slash command) drives a new `gemini-bridge-setup status|write` CLI that
 never parses free text as shell, JSON or Python. The server launches with
-`uv run --frozen --directory ${CLAUDE_PLUGIN_ROOT} gemini-bridge`, using a venv at
+`uv run --frozen --project ${CLAUDE_PLUGIN_ROOT} gemini-bridge`, using a venv at
 `${CLAUDE_PLUGIN_DATA}/venv` that `uv` builds once and reuses across restarts and version
 bumps. Project-relative paths (`transcript_dir`, `artifacts_dir`, the file-tools sandbox root)
 now anchor to `CLAUDE_PROJECT_DIR`, falling back to the working directory when Claude Code

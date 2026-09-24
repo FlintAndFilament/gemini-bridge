@@ -3,5 +3,12 @@
   "version": "0.1.0",
   "description": "A second opinion from Google Gemini inside Claude Code: review, debug, architect, brainstorm. Run /sidekick:setup after installing.",
   "author": { "name": "FlintAndFilament" },
-  "repository": "https://github.com/FlintAndFilament/gemini-bridge"
+  "repository": "https://github.com/FlintAndFilament/gemini-bridge",
+  "mcpServers": {
+    "gemini": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--quiet", "--project", "${CLAUDE_PLUGIN_ROOT}", "gemini-bridge"],
+      "env": { "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv", "PYTHONUNBUFFERED": "1" }
+    }
+  }
 }
