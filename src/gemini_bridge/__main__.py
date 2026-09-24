@@ -127,7 +127,7 @@ def main() -> None:
     from gemini_bridge.sandbox import SandboxError
     from gemini_bridge.server import build_server
     from gemini_bridge.transcript import TranscriptError, TranscriptWriter
-    from gemini_bridge.workspace import build_workspace
+    from gemini_bridge.workspace import build_workspace, project_root
 
     try:
         config = load_config()
@@ -159,8 +159,11 @@ def main() -> None:
         "latest models: %s",
         ", ".join(f"{family}={mid}" for family, mid in latest.items()) or "unresolved (pinned)",
     )
+
+    root = project_root()
+
     try:
-        transcript = TranscriptWriter(config.transcript_dir, startup_time)
+        transcript = TranscriptWriter(config.transcript_dir, startup_time, base=root)
     except TranscriptError as exc:
         _log.error("startup failed — %s", exc)
         sys.exit(1)
@@ -168,7 +171,7 @@ def main() -> None:
     _log.info("transcript → %s", transcript.path)
 
     try:
-        workspace = build_workspace(config, Path.cwd())
+        workspace = build_workspace(config, root)
     except SandboxError as exc:
         _log.error("startup failed — artifacts_dir %r: %s", config.artifacts_dir, exc)
         sys.exit(1)

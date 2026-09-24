@@ -41,7 +41,9 @@ class TranscriptError(Exception):
 class TranscriptWriter:
     """Writes tool exchanges to a Markdown transcript file for the current server session."""
 
-    def __init__(self, config_transcript_dir: str, startup_time: datetime) -> None:
+    def __init__(
+        self, config_transcript_dir: str, startup_time: datetime, base: Optional[Path] = None
+    ) -> None:
         # Startup, unlike append(), fails loudly: a path that cannot be used is a config
         # mistake the user must fix, and an unhandled error here reaches Claude Code as
         # nothing but "server failed to connect" (#87).
@@ -50,7 +52,10 @@ class TranscriptWriter:
         # OSError — for an unknown ~user, and resolve() can raise on a pathological path.
         transcript_dir = Path(config_transcript_dir)
         try:
-            transcript_dir = transcript_dir.expanduser().resolve()
+            transcript_dir = transcript_dir.expanduser()
+            if base is not None and not transcript_dir.is_absolute():
+                transcript_dir = base / transcript_dir
+            transcript_dir = transcript_dir.resolve()
             transcript_dir.mkdir(parents=True, exist_ok=True)
         except (OSError, RuntimeError, ValueError) as exc:
             reason = getattr(exc, "strerror", None) or exc
