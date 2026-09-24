@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-git clone git@github.com:FlintAndFilament/gemini-bridge.git
-cd gemini-bridge
+git clone git@github.com:FlintAndFilament/sidekick.git
+cd sidekick
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m pip install pre-commit

@@ -173,6 +173,18 @@ the next time you start Claude Code. Claude Code launched from a GUI/desktop app
 than a terminal) may not inherit shell-profile exports at all — launch it from a terminal in
 that case.
 
+**Or keep the key in the macOS Keychain** instead of the profile, and read it only when you
+launch. Store it once (`-w` with no value prompts for it, so it never lands in shell history):
+```bash
+security add-generic-password -s sidekick-api-key -a "$USER" -w
+```
+Then add a named launch alias to your profile and start Claude Code with it:
+```bash
+# Claude Code with the sidekick plugin's Gemini API key (from macOS Keychain)
+alias cc-sidekick-mcp='GEMINI_API_KEY="$(security find-generic-password -s sidekick-api-key -a "$USER" -w)" command claude'
+```
+The key is set only for that `claude` process and its children, not in every shell.
+
 **Run `/sidekick:setup` and choose `api_key`.** It asks for the **name** of the env var (default:
 `GEMINI_API_KEY`), re-prompts if what you typed looks like a key instead of a name (starts with
 `AIza`, contains lowercase letters, or is over 40 characters), and warns if the variable is not

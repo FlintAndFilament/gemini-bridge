@@ -102,13 +102,14 @@ sequenceDiagram
 ## Quick start
 
 ```
-/plugin marketplace add FlintAndFilament/gemini-bridge
+/plugin marketplace add FlintAndFilament/sidekick
 /plugin install sidekick@sidekick
 /sidekick:setup
 ```
 
 Requires [uv](https://docs.astral.sh/uv/); `/sidekick:setup` offers to install it.
-api_key users: export your key (e.g. `export GEMINI_API_KEY="…"`) in the shell that starts Claude Code.
+api_key users: export your key (e.g. `export GEMINI_API_KEY="…"`) in the shell that starts Claude Code,
+or read it from the macOS Keychain with a launch alias ([docs/auth.md](docs/auth.md#method-4-api-key-google-ai-studio)).
 Windows: not yet tested end to end.
 
 ## Migrating from the manual install
@@ -254,7 +255,7 @@ Claude picks per call based on question complexity. See [docs/tools.md](docs/too
 
 ## Roadmap
 
-Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `gemini_help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/gemini-bridge/issues).
+Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `gemini_help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
 
 See [docs/roadmap.md](docs/roadmap.md) for what shipped when, and why.
 
