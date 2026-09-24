@@ -1,0 +1,12 @@
+{
+  "name": "sidekick",
+  "owner": { "name": "FlintAndFilament" },
+  "description": "A second opinion from Google Gemini inside Claude Code.",
+  "plugins": [
+    {
+      "name": "sidekick",
+      "source": { "source": "github", "repo": "FlintAndFilament/gemini-bridge", "ref": "main" },
+      "description": "A second opinion from Google Gemini inside Claude Code."
+    }
+  ]
+}
