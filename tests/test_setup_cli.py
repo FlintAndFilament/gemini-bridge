@@ -11,6 +11,10 @@ import pytest
 
 from gemini_bridge import setup_cli
 
+# Captured before any test monkeypatches setup_cli._keychain_problem, so tests that need the
+# real validation logic (not the autouse no-op below) can restore it.
+_REAL_KEYCHAIN_PROBLEM = setup_cli._keychain_problem
+
 
 @pytest.fixture
 def cfg(tmp_path: Path) -> Path:
@@ -239,3 +243,50 @@ class TestStatus:
         monkeypatch.setenv("GEMINI_API_KEY", "x")
         _, out = run(cfg, "status")
         assert out["checks"]["api_key_env_set"] is True
+
+
+class TestStatusNeverLeaksASavedSecret:
+    """Review finding 1: a pasted key surviving in config.json must never reach stdout."""
+
+    def test_a_pasted_key_in_saved_config_is_not_echoed(self, cfg: Path) -> None:
+        cfg.parent.mkdir(parents=True)
+        secret = "AIzaSyD3adb33fD3adb33fD3adb33fD3adb33f0"
+        cfg.write_text(json.dumps({"auth": {"method": "api_key", "api_key_env": secret}}))
+        code, out = run(cfg, "status")
+        assert code == 0
+        assert secret not in json.dumps(out)
+        assert out["values"]["api_key_env"] == "GEMINI_API_KEY"
+        assert out["checks"]["api_key_env_invalid"] is True
+
+
+class TestWriteFailureIsReportedNotRaised:
+    """Review finding 2: an OSError while writing must become exit-2 JSON, not a traceback."""
+
+    def test_os_error_during_write_is_exit_2_json_with_no_leftover_tmp(
+        self, cfg: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(setup_cli.os, "replace", _raise)
+        code, out = run(cfg, "write", "--auth-method", "api_key")
+        assert code == 2 and not out["ok"]
+        assert list(cfg.parent.glob("*.tmp")) == []
+
+
+class TestKeychainProblemCatchesNonServiceAccountJSON:
+    """Review finding 3: valid-JSON-but-not-a-service-account must be reported, not crash."""
+
+    def test_a_keychain_item_that_is_not_a_service_account_is_rejected(
+        self, cfg: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(setup_cli.sys, "platform", "darwin")
+        # Restore the real validator — the autouse fixture stubs it out for every other test.
+        monkeypatch.setattr(setup_cli, "_keychain_problem", _REAL_KEYCHAIN_PROBLEM)
+
+        def _raise(_auth_config: object) -> None:
+            raise ValueError("not a service account")
+
+        monkeypatch.setattr(setup_cli, "_load_keychain", _raise)
+        code, out = run(cfg, "write", "--auth-method", "keychain")
+        assert code == 2 and not out["ok"]

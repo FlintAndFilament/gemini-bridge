@@ -58,9 +58,25 @@ def _read(path: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     return loaded, None
 
 
+def _auth_dict(config: dict[str, Any]) -> dict[str, Any]:
+    auth = config.get("auth")
+    return auth if isinstance(auth, dict) else {}
+
+
+def _valid_env_name(value: Any) -> bool:
+    """True if value is a safe env var NAME — never a pasted key or other secret-shaped text."""
+    return (
+        isinstance(value, str) and not _looks_like_api_key(value) and bool(_ENV_NAME.match(value))
+    )
+
+
 def _values(config: dict[str, Any]) -> dict[str, Any]:
-    raw_auth = config.get("auth")
-    auth: dict[str, Any] = raw_auth if isinstance(raw_auth, dict) else {}
+    auth = _auth_dict(config)
+    # A saved api_key_env that isn't a valid NAME (e.g. a hand-edited or pasted key) is never
+    # surfaced here: this dict feeds both `status`'s stdout and `_merge`'s prev-value lookups,
+    # and a secret must never round-trip through either.
+    raw_api_key_env = auth.get("api_key_env")
+    api_key_env = raw_api_key_env if _valid_env_name(raw_api_key_env) else None
     saved = {
         "auth_method": auth.get("method"),
         "project": config.get("project"),
@@ -70,7 +86,7 @@ def _values(config: dict[str, Any]) -> dict[str, Any]:
         "transcript_dir": config.get("transcript_dir"),
         "keychain_service": auth.get("keychain_service"),
         "keychain_account": auth.get("keychain_account"),
-        "api_key_env": auth.get("api_key_env"),
+        "api_key_env": api_key_env,
     }
     return {k: (saved[k] if saved[k] is not None else DEFAULTS[k]) for k in DEFAULTS}
 
@@ -113,14 +129,19 @@ def _keychain_problem(service: str, account: str) -> Optional[str]:
         _load_keychain(
             AuthConfig(method="keychain", keychain_service=service, keychain_account=account)
         )
-    except AuthError as exc:
+    # AuthError is the documented failure; a keychain item that is valid JSON but not a
+    # service account (or missing required fields) surfaces as ValueError/KeyError from
+    # from_service_account_info instead — both must be caught here, not left to crash (#102).
+    except (AuthError, ValueError, KeyError) as exc:
         return str(exc)
     return None
 
 
 def status(path: Path) -> dict[str, Any]:
     config, error = _read(path)
-    values = _values(config or {})
+    config = config or {}
+    values = _values(config)
+    raw_api_key_env = _auth_dict(config).get("api_key_env")
     return {
         "config_path": str(path),
         "config_exists": path.exists(),
@@ -133,6 +154,10 @@ def status(path: Path) -> dict[str, Any]:
             "google_application_credentials": os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
             or None,
             "gcloud": _has_gcloud(),
+            # True when the saved api_key_env failed validation in _values() and was replaced
+            # by the default — flags the problem without ever printing the invalid value itself.
+            "api_key_env_invalid": isinstance(raw_api_key_env, str)
+            and not _valid_env_name(raw_api_key_env),
         },
     }
 
@@ -215,11 +240,15 @@ def _backup(path: Path) -> Path:
 def write(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     config, error = _read(path)
     new, warnings = _merge(config or {}, args)  # raises before any file is touched
-    path.parent.mkdir(parents=True, exist_ok=True)
-    backup = _backup(path) if error is not None else None
     tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(new, indent=2) + "\n")
-    os.replace(tmp, path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        backup = _backup(path) if error is not None else None
+        tmp.write_text(json.dumps(new, indent=2) + "\n")
+        os.replace(tmp, path)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise SetupError(f"Could not write {path}: {exc}") from exc
     return {
         "ok": True,
         "config_path": str(path),
