@@ -4,7 +4,9 @@ What has shipped, what is open, and what is parked. Rebuilt from git history and
 2026-09-21; everything under **Shipped** is on `main`.
 
 The `26.7.x` labels are the names the July releases went out under. Work after 26.7.4 is grouped
-by feature and issue number instead of by version.
+by feature and issue number. From the plugin on, releases carry the plugin version
+(`.claude-plugin/plugin.json`): 0.1.0 plugin, 0.2.0 and 0.3.0 rename, 0.4.0 `list_sessions`
+(tagged `v0.4.0`).
 
 The project was called gemini-bridge until 2026-09-24 (#104). Upgrading an older install: **before** `/plugin update sidekick`, run `mv ~/.config/gemini-bridge ~/.config/sidekick`, then update and restart. (After the update, the new server has already created `~/.config/sidekick/`, and `mv` nests the old folder inside it.)
 
@@ -125,7 +127,7 @@ superseded by #76.
   the server instructions explain when to use web access and sessions, and every tool shares one
   accurate `session_name` description (#77).
 - Server instructions cut to fit under Claude Code's ~2048-character cap; the full guide moved to
-  a new `help` tool (#78). The server now registers 7 tools.
+  a new `help` tool (#78). The server then registered 7 tools.
 
 ### Web sources (#80, #82)
 
@@ -149,29 +151,30 @@ doesn't set it. Tools now appear to Claude as `mcp__plugin_sidekick_mcp__*`.
 superseded by #102 — `/plugin install` chooses the install scope itself, so there is no
 `setup.sh` scope prompt left to build.
 
+### Rename to sidekick (#104, #107) — 0.2.0, 0.3.0
+
+The project, repository, package, CLIs, config folder (`~/.config/sidekick/`), log and transcript
+names and notices all became `sidekick` (#104, 0.2.0). Then the MCP server became
+`plugin:sidekick:mcp` and the tools lost their `gemini_` prefix: `ask`, `brainstorm`, `review`,
+`debug`, `architect`, `list_models`, `help` (#107, 0.3.0). A clean break with no compatibility
+shim; see the upgrade note at the top. "Gemini" stays where it names Google's model or API.
+
+### Named sessions (#15) — 0.4.0
+
+`session_name` routing was already live on every generating tool (separate per tool and per
+model, LRU-capped at 50, named in each transcript header). 0.4.0 adds `list_sessions`: the live
+conversations with tool, name, model and turn count, most recently used first. The planned
+`new_session` reset tool was dropped, because a new name already starts fresh and every
+`session_name` description says so. The server now registers 8 tools.
+
+#17 (a `set_transcript_dir` tool) was closed as not planned: transcripts are already
+project-local by default, and nothing has needed to switch directories mid-session.
+
 ---
 
 ## Open
 
-### Named sessions (#15) — possibly partly done
-
-**Already shipped:** every generating tool takes `session_name`. Calls that share a name continue
-one Gemini conversation; a new name starts fresh. Sessions are separate per tool and per model,
-live in memory until the server restarts, and the least recently used is dropped past 50. The
-session name appears in each transcript entry header.
-
-**Not built:** `gemini_new_session(name)` (reset a named session) and `gemini_list_sessions()`
-(list active names with turn counts). Worth deciding whether these are still needed, since a new
-name already gives a fresh conversation, before closing or narrowing the issue.
-
-### Per-project transcript routing (#17)
-
-`gemini_set_transcript_dir(path)` tool — redirect the transcript file without editing config.json.
-
-The default `transcript_dir` is already project-local (`./session-summaries`, relative to the
-project root — #102), so this now matters mainly when `transcript_dir` is set to an absolute
-path, or to switch directories mid-session. Changing it today means editing
-`~/.config/sidekick/config.json` and restarting the MCP server.
+Nothing. New work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
 
 ---
 
