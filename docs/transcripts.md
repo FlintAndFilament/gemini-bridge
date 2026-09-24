@@ -36,8 +36,8 @@ Two problems, in order of severity...
 - **Response:** Gemini's answer, followed by the full sources footer when the call was
   web-grounded.
 
-Only the five generating tools write entries. `list_models` and `help` write
-nothing.
+Only the five generating tools write entries. `list_models`, `list_sessions` and `help`
+write nothing.
 
 ## Tool-call lines
 
@@ -87,7 +87,7 @@ that could not be resolved keeps its redirect link, marked `(unresolved Google r
   notice, and the `artifact saved` / `artifact not saved` line.
 - Failed calls in which Gemini made no tool call. A call that fails after at least one tool call
   is logged, with the error text as its response, so the calls it made are still on record.
-- Anything from `list_models` or `help`.
+- Anything from `list_models`, `list_sessions` or `help`.
 
 ## Session boundaries
 

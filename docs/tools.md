@@ -1,8 +1,8 @@
 # Tools Reference
 
-Seven tools: five generating tools (`ask`, `brainstorm`, `review`,
-`debug`, `architect`) that call Gemini, and two utilities that do not generate:
-[`list_models`](#list_models) and [`help`](#help).
+Eight tools: five generating tools (`ask`, `brainstorm`, `review`,
+`debug`, `architect`) that call Gemini, and three utilities that do not generate:
+[`list_models`](#list_models), [`list_sessions`](#list_sessions) and [`help`](#help).
 
 The five generating tools share four optional parameters:
 - `thinking: "none" | "low" | "medium" | "high"` — reasoning depth; omit to use `default_thinking`
@@ -11,7 +11,8 @@ The five generating tools share four optional parameters:
 - `session_name: str` — which conversation to continue (default `"default"`). Calls sharing a
   name continue one Gemini conversation; a new name starts fresh. Sessions are separate per
   tool and per model, live in memory until the server restarts, and the least recently used is
-  dropped past 50. **After a `web=true` call, use a new name before asking for writes** — see
+  dropped past 50. [`list_sessions`](#list_sessions) shows the live ones. There is no reset
+  tool: a new name is the reset. **After a `web=true` call, use a new name before asking for writes** — see
   [What persists between calls](#what-persists-between-calls). That advice appears in the
   parameter's own description only on the three `write_file` tools, and only while file tools
   are on.
@@ -106,10 +107,10 @@ workspace at registration, so none can drift from the capability actually wired 
   only while file tools are enabled. Artifact saving does not set it: the store always creates a
   new file (`-2`, `-3` … on collision) and never overwrites. `readOnlyHint` is false on the five
   generating tools, because every one of them appends to the transcript, and true on
-  `list_models` and `help`, which write nothing — a client that gates
+  `list_models`, `list_sessions` and `help`, which write nothing — a client that gates
   auto-approval on annotations would otherwise prompt for the harmless calls and wave the rest
   through. `openWorldHint` is true on every tool that reaches the Gemini API (all but
-  `help`).
+  `list_sessions` and `help`).
 
 Every advertised value is read from whatever enforces it, never restated: the capability rows
 from the `CAPABILITY` each tool module exports (built from its own `_WRITE`, `_ARTIFACTS` and
@@ -505,6 +506,36 @@ See [configuration.md](configuration.md#choosing-a-model) for the recommended mo
 
 ---
 
+## list_sessions
+
+**Purpose:** lists the Gemini conversations this server holds in memory, so Claude can find one
+to continue after a gap or a context compaction (#15). It reads process memory only: no Gemini
+call, no parameters, writes nothing, and is not recorded in the transcript.
+
+**Behavior:**
+- One row per session: the tool, the `session_name`, the concrete model, and the number of
+  committed turns (a call that failed adds none). The same name on two models is two rows,
+  because sessions are keyed by tool + name + model.
+- Most recently used first. That is the eviction order read backwards: past 50 sessions, the
+  bottom row is the next one dropped.
+- Empty until the first generating call. Everything is lost when the server restarts.
+
+There is deliberately no `new_session` tool: calling with a new `session_name` starts a fresh
+conversation, and every generating tool's `session_name` description says so.
+
+**Sample output:**
+```
+2 conversation(s) in memory, most recently used first (the least recently used is dropped past 50; all are lost on restart):
+
+  tool    session_name  model             turns
+  review  pr-42         gemini-3.8-flash  3
+  ask     default       gemini-3.8-flash  1
+
+To continue one, call the same tool with that session_name (and model, if you passed one). A new name starts fresh.
+```
+
+---
+
 ## help
 
 The full detail behind the short server instructions (#78): the `--help` for Claude. It writes
@@ -519,9 +550,9 @@ nothing, makes no Gemini call, and is not recorded in the transcript.
 | `tools` | Each tool's one-line purpose, for choosing between them |
 | `files` | Sandbox root, read tools, full deny-list, directories `glob`/`grep` skip, result caps, which tools may `write_file` and its size cap |
 | `web` | Web default, when to pass `web=true`, the untrusted-content rule, and the `write_file` exclusion with the new-`session_name` advice |
-| `sessions` | The `session_name` contract |
+| `sessions` | The `session_name` contract, and a pointer to `list_sessions` |
 | `disk` | Everything that reaches disk: the transcript path and which tools save artifacts where |
-| `gemini_<tool>` | That tool's full description, as its MCP description states it |
+| `<tool>` | That tool's full description, as its MCP description states it |
 
 Every topic is built from the live configuration, the same way the instructions are, so it
 always matches what the server actually does. Topic names are case-insensitive; an unknown

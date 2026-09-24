@@ -19,7 +19,7 @@ graph TD
     WS --> AR["ArtifactStore<br/>artifacts.py"]
 
     SRV --> GUIDE["guide.py<br/>server_instructions() / help_text()"]
-    SRV --> MCP["FastMCP + 7 registered tools"]
+    SRV --> MCP["FastMCP + 8 registered tools"]
     MCP --> T1["ask"]
     MCP --> T2["brainstorm"]
     MCP --> T3["review"]
@@ -27,6 +27,7 @@ graph TD
     MCP --> T5["architect"]
     MCP --> T6["list_models"]
     MCP --> T7["help"]
+    MCP --> T8["list_sessions"]
 
     T1 & T2 & T3 & T4 & T5 --> BASE["tools/base.py<br/>call_gemini()"]
     BASE --> CL
@@ -39,10 +40,12 @@ graph TD
     T6 --> CL
     T6 & BASE --> MOD["models.py<br/>shortlist / schema_hint / is_chat_capable"]
     T7 --> GUIDE
+    T8 --> CL
 ```
 
 The five generating tools route through `call_gemini()` in `tools/base.py`.
-`list_models` calls the client directly and never writes a transcript.
+`list_models` and `list_sessions` call the client directly and never write a transcript;
+`list_sessions` only reads the in-memory session cache.
 `help` never calls the backend: `server.py` hands it a callable that renders text
 from `guide.py`.
 
@@ -58,7 +61,7 @@ Package root: `src/sidekick/`.
 | `auth.py` | Credentials for `adc`, `env`, `keychain` and `api_key`; `build_auth()` returns `AuthResult(credentials, api_key)`; raises `AuthError` | config |
 | `errors.py` | `ClientError`, in its own module so `client.py` and `tool_loop.py` can both raise it | none |
 | `models.py` | Model taxonomy: per-backend shortlist, backend detection, schema hint, chat-capable filter, newest-per-family resolution, alias mapping. Pure, no I/O | none |
-| `client.py` | `GeminiClient`: builds the google-genai client, LRU session cache (50), model resolution, thinking translation that learns per-model rejections, 503/429 retry with backoff, `build_config()`, `ask()` | config, errors, models, tool_loop, web_tools |
+| `client.py` | `GeminiClient`: builds the google-genai client, LRU session cache (50) and `sessions()` for `list_sessions`, model resolution, thinking translation that learns per-model rejections, 503/429 retry with backoff, `build_config()`, `ask()` | config, errors, models, tool_loop, web_tools |
 | `tool_loop.py` | `ToolRegistry`, `ToolCallRecord`, `run_tool_loop()` (up to 20 rounds, then a forced answer), `record_grounding()` for server-side web activity | errors |
 | `sandbox.py` | Path confinement: resolves every model-supplied path inside the root, applies the deny-list at any depth, walks without leaving the root | none |
 | `file_tools.py` | `list_dir`, `glob`, `grep`, `read_file`, `write_file` on top of `Sandbox`, with result and size caps; publishes them to a `ToolRegistry` (read-only or read+write) | sandbox, tool_loop |
@@ -68,7 +71,7 @@ Package root: `src/sidekick/`.
 | `sources.py` | Resolves Google grounding redirect links to real URLs with one HEAD request each (no redirect follow, 3 s timeout, in parallel); renders the sources footer (#80, #82) | tool_loop (`ToolCallRecord`) |
 | `transcript.py` | `TranscriptWriter`: appends each exchange as Markdown; write errors are logged, never raised | none |
 | `guide.py` | Text only: the short server instructions (kept under `INSTRUCTIONS_BUDGET` = 2000 characters) and the `help` topics, all derived from the live capability rows, deny-list, caps and web support (#74, #78) | tools, tools/base, file_tools, sandbox, web_tools, workspace, transcript |
-| `server.py` | Builds `FastMCP` with the guide's instructions and registers all 7 tools | client, guide, tools, transcript, workspace |
+| `server.py` | Builds `FastMCP` with the guide's instructions and registers all 8 tools | client, guide, tools, transcript, workspace |
 
 Tools package: `src/sidekick/tools/`.
 
@@ -82,6 +85,7 @@ Tools package: `src/sidekick/tools/`.
 | `tools/debug.py` | `debug`: root-cause hypotheses. Read-only, no artifacts | same as ask |
 | `tools/architect.py` | `architect`: design and tradeoffs. Read+write, artifacts on by default | same as ask |
 | `tools/list_models.py` | `list_models`: live, chat-capable catalog for the active backend; falls back to the static shortlist | client, models, tools/base, transcript (signature only) |
+| `tools/list_sessions.py` | `list_sessions`: renders the live sessions (tool, `session_name`, model, turns), most recently used first (#15) | client, tools/base |
 | `tools/help.py` | `help`: returns one help topic or all of them from an injected render callable, so it never imports `guide.py` (#78) | none |
 
 ## Data Flow (per generating tool call)
@@ -173,6 +177,7 @@ sequenceDiagram
 - **Capped:** at most 50 sessions; the least recently used one is evicted.
 - **Persists:** for the lifetime of the MCP server process (one Claude Code session).
 - **Destroyed:** when Claude Code restarts (new server process, new sessions).
+- **Visible:** `list_sessions` lists them, most recently used first, with turn counts.
 
 Each tool has its own sessions (`ask:default`, `review:default`, ...), so a
 tool's system prompt persona stays fixed within its sessions.

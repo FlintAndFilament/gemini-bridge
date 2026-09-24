@@ -2,18 +2,19 @@
 <h4 align="center">Gemini as a live second opinion for Claude Code — reads your repo, searches the web with real sources, keeps sessions and transcripts.</h4>
 
 <p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-blue.svg">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11+-blue.svg">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-1.28+-green.svg">
   <img alt="Backends" src="https://img.shields.io/badge/backend-Developer%20API%20%7C%20Vertex%20AI-orange.svg">
   <img alt="Auth" src="https://img.shields.io/badge/auth-API%20key%20%7C%20ADC%20%7C%20env%20%7C%20Keychain-purple.svg">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-667%20passing-brightgreen.svg">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-677%20passing-brightgreen.svg">
 </p>
 
 sidekick is a Claude Code plugin that gives Claude a live Gemini counterpart. When Claude is working on a hard problem — an architectural decision, a tricky bug, a code review — it can consult Gemini as a second opinion without switching tools or context.
 
 Gemini isn't limited to what Claude pastes into the call. It reads the repository itself, inside a sandbox. It can search the web, and each web answer comes back with the sources it actually used. Conversations persist across calls, every exchange lands in a Markdown transcript, and the server logs to a daily file you can tail.
 
-Five focused tools, each with its own persona, plus two utilities. Not a 37-tool Swiss Army knife.
+Five focused tools, each with its own persona, plus three utilities. Not a 37-tool Swiss Army knife.
 
 **Quick navigation:** [What it does](#what-it-does) | [How it works](#how-it-works) | [Prerequisites](#prerequisites) | [Quick start](#quick-start) | [Configuration](#configuration) | [Choosing a model](#choosing-a-model) | [Auth methods](#auth-methods) | [Thinking levels](#thinking-levels) | [Roadmap](#roadmap) | [Full documentation](#full-documentation)
 
@@ -29,13 +30,14 @@ Five focused tools, each with its own persona, plus two utilities. Not a 37-tool
 | `debug` | Evidence-based, hypothesis-driven | `error` | no |
 | `architect` | Opinionated, explicit tradeoffs | `description` | yes |
 | `list_models` | Lists the chat models on your backend, for `model=` | — | no |
+| `list_sessions` | Lists the conversations in memory (tool, `session_name`, model, turns), to find one to continue | — | no |
 | `help` | Claude's `--help`: full detail by topic | — | no |
 
 **Parameters on the five generating tools** (all optional):
 
 | Parameter | What it does |
 |---|---|
-| `session_name` | Same name continues a Gemini conversation; a new name starts fresh. Sessions are separate per tool and per model, and live until the server restarts |
+| `session_name` | Same name continues a Gemini conversation; a new name starts fresh. Sessions are separate per tool and per model, and live until the server restarts. `list_sessions` shows the live ones |
 | `thinking` | `none` · `low` · `medium` · `high`. Omit it to use `default_thinking` |
 | `model` | A concrete id, or `flash` / `flash-lite` / `pro` for the newest of that family. See [Choosing a model](#choosing-a-model) |
 | `web` | `true` lets Gemini search the web and fetch URLs for this call. Omit it to use `web_tools.enabled` (off by default) |
@@ -111,6 +113,13 @@ Requires [uv](https://docs.astral.sh/uv/); `/sidekick:setup` offers to install i
 api_key users: export your key (e.g. `export GEMINI_API_KEY="…"`) in the shell that starts Claude Code,
 or read it from the macOS Keychain with a launch alias ([docs/auth.md](docs/auth.md#method-4-api-key-google-ai-studio)).
 Windows: not yet tested end to end.
+
+**Updating:** `/plugin update` opens a menu, so the CLI is quicker:
+```bash
+claude plugin marketplace update sidekick && claude plugin update sidekick@sidekick
+```
+then run `/reload-plugins` in Claude Code (or restart it). Coming from gemini-bridge? Read the
+upgrade note in [docs/roadmap.md](docs/roadmap.md) first.
 
 ## Configuration
 
@@ -226,7 +235,7 @@ Claude picks per call based on question complexity. See [docs/tools.md](docs/too
 
 ## Roadmap
 
-Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, and `help`. Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
+Shipped since the first release: named sessions and per-call models, newest-model resolution with overload fallback, API key auth, repository file tools, capability metadata for the MCP client, web access with resolved sources, `help`, the Claude Code plugin, and `list_sessions` (0.4.0). Open work is tracked in [GitHub issues](https://github.com/FlintAndFilament/sidekick/issues).
 
 See [docs/roadmap.md](docs/roadmap.md) for what shipped when, and why.
 

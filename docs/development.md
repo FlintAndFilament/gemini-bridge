@@ -21,7 +21,7 @@ Python 3.11 or newer is required.
 .venv/bin/python -m pytest -q
 ```
 
-667 tests across 19 modules in `tests/`. All mocked: no network calls, runs in about
+677 tests across 20 modules in `tests/`. All mocked: no network calls, runs in about
 2 seconds.
 
 ## Running the plugin locally
@@ -45,7 +45,7 @@ The sandbox root is the project root: `CLAUDE_PROJECT_DIR` when Claude Code sets
 the server's working directory (#102). File tools switch off when that directory is your home
 directory, `/`, or an ancestor of home.
 
-After a restart, check the tool list with `help` or `list_models`. A resumed
+After a restart, check the tool list with `help`, `list_models` or `list_sessions`. A resumed
 Claude Code conversation can show tool schemas from before the restart.
 
 ## Watching logs
