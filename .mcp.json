@@ -1,0 +1,7 @@
+{
+  "gemini": {
+    "command": "uv",
+    "args": ["run", "--frozen", "--quiet", "--directory", "${CLAUDE_PLUGIN_ROOT}", "gemini-bridge"],
+    "env": { "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv", "PYTHONUNBUFFERED": "1" }
+  }
+}
