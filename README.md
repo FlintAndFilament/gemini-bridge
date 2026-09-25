@@ -14,6 +14,11 @@
   <a href="docs/tools.md">Tools</a> ·
   <a href="docs/auth.md">Auth</a> ·
   <a href="docs/configuration.md">Configuration</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/transcripts.md">Transcripts</a> ·
+  <a href="docs/logging.md">Logs</a> ·
+  <a href="docs/development.md">Development</a> ·
+  <a href="docs/roadmap.md">Roadmap</a> ·
   <a href="docs/README.md">All docs</a>
 </p>
 
@@ -51,15 +56,3 @@ Tested on macOS; Windows is not yet tested end to end.
 - **Keeps conversations.** The same `session_name` continues one; a new name starts fresh. → [Tools](docs/tools.md)
 - **Uses the newest model.** `flash`, `flash-lite` and `pro` track the newest release; an overloaded model falls back with a notice. → [Choosing a model](docs/configuration.md#choosing-a-model)
 - **Leaves a record.** Every exchange goes into a Markdown transcript in your project, and `review` / `architect` answers are saved as files. → [Transcripts](docs/transcripts.md)
-
-## Documentation
-
-| Topic | Where |
-|---|---|
-| Every tool, its parameters, file and web access | [docs/tools.md](docs/tools.md) |
-| Auth methods and troubleshooting | [docs/auth.md](docs/auth.md) |
-| `config.json` fields, models and thinking levels | [docs/configuration.md](docs/configuration.md) |
-| How a call flows, module map | [docs/architecture.md](docs/architecture.md) · [request-flow diagram](docs/diagrams/request-flow.mermaid) |
-| Transcripts and logs | [docs/transcripts.md](docs/transcripts.md) · [docs/logging.md](docs/logging.md) |
-| Development and contributing | [docs/development.md](docs/development.md) |
-| What shipped, and upgrading from gemini-bridge | [docs/roadmap.md](docs/roadmap.md) |
