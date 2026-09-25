@@ -1,0 +1,41 @@
+sequenceDiagram
+    participant CC as Claude Code
+    participant T as Tool module
+    participant B as base.call_gemini()
+    participant C as client.py<br/>GeminiClient
+    participant L as tool_loop.run_tool_loop()
+    participant G as Gemini backend
+    participant S as sources.py
+    participant W as transcript + artifacts
+
+    CC->>T: tool call (prompt, thinking?, session_name?, model?, web?)
+    T->>B: call_gemini(...)
+    B->>B: resolve_capabilities(write, web)
+    B->>C: get_or_create_session(tool:name, model)
+    B->>C: ask(session, prompt, registry, web)
+    C->>L: run_tool_loop(generate, history, registry)
+    loop until a text answer (max 20 rounds)
+        L->>G: generate_content (GenerateContentConfig)
+        G-->>L: candidate
+        L->>L: record_grounding(candidate)
+        opt function calls
+            L->>L: registry.dispatch() via Sandbox
+        end
+    end
+    L-->>C: answer
+    alt terminal 503/429 and no write_file yet
+        C-->>B: ClientError
+        B->>C: ask(..., fallback model)
+        C-->>B: answer (notice prefixed later)
+    else success
+        C-->>B: answer
+    end
+    B->>S: resolve_redirects(record_uris)
+    S-->>B: real URLs
+    B->>B: append sources_footer()
+    B->>W: transcript.append()
+    opt artifact requested
+        B->>W: artifacts.save()
+    end
+    B-->>T: reply text
+    T-->>CC: reply text

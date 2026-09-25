@@ -10,4 +10,4 @@
 | [logging.md](logging.md) | Log file location, levels, tail command, rotation, debug mode |
 | [development.md](development.md) | Dev setup, running the plugin locally (`claude --plugin-dir .`), tests, lint and types, CI workflows, adding a new tool, branching workflow |
 | [roadmap.md](roadmap.md) | Features by release, with rationale and shipped status |
-| [diagrams/request-flow.mermaid](diagrams/request-flow.mermaid) | Sequence diagram of one generating call: model resolution, the tool loop, overload fallback, source resolution |
+| [diagrams/](diagrams/) | Every diagram, as a standalone Mermaid file: [request-flow](diagrams/request-flow.mermaid) (one call, end to end) · [components](diagrams/components.mermaid) (modules and tools) · [generating-call](diagrams/generating-call.mermaid) (one call through the modules) · [model-resolution](diagrams/model-resolution.mermaid) (`model=` to a concrete id) · [list-models](diagrams/list-models.mermaid) (the `list_models` flow) |

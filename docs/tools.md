@@ -488,19 +488,7 @@ Or pass flash / flash-lite / pro to get the newest release of that family.
 On a Vertex backend the header names Vertex AI and the `-latest` aliases are absent from the
 catalog (the bridge still accepts them as `model=` values and resolves them itself).
 
-**How it resolves:**
-
-```mermaid
-flowchart TD
-    A["list_models(refresh?)"] --> B{cached and not refresh?}
-    B -->|yes| C[return cached table]
-    B -->|no| D["client.list_models → backend models.list"]
-    D --> E{fetch ok?}
-    E -->|yes| F["allowlist: keep gemini-2+ chat models + -latest<br/>drop media/specialized + non-Gemini families"]
-    F --> G[render table<br/>default first, mark default/latest/alias]
-    G --> H[cache + return]
-    E -->|no| I[return curated static shortlist<br/>+ 'live unavailable' notice<br/>not cached]
-```
+**Diagram:** [diagrams/list-models.mermaid](diagrams/list-models.mermaid) — how `list_models` fetches, filters, caches and falls back.
 
 See [configuration.md](configuration.md#choosing-a-model) for the recommended models per backend.
 
