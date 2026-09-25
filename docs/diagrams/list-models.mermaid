@@ -1,0 +1,9 @@
+flowchart TD
+    A["list_models(refresh?)"] --> B{cached and not refresh?}
+    B -->|yes| C[return cached table]
+    B -->|no| D["client.list_models → backend models.list"]
+    D --> E{fetch ok?}
+    E -->|yes| F["allowlist: keep gemini-2+ chat models + -latest<br/>drop media/specialized + non-Gemini families"]
+    F --> G[render table<br/>default first, mark default/latest/alias]
+    G --> H[cache + return]
+    E -->|no| I[return curated static shortlist<br/>+ 'live unavailable' notice<br/>not cached]

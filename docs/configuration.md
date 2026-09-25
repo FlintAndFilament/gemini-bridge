@@ -314,20 +314,4 @@ model accepts". An unrecognized model name raises a `ClientError` at call time.
 
 ### How a model value is resolved
 
-```mermaid
-flowchart TD
-    A[Tool call] --> B{model= provided?}
-    B -->|yes| C{alias?<br/>flash / flash-lite / pro / *-latest}
-    B -->|no| D{default_model set?}
-    D -->|yes| C
-    D -->|no| F[newest Flash]
-    C -->|yes| E[newest of that family<br/>pinned id if list unreadable]
-    C -->|no| G[concrete id as given]
-    E --> H[choose thinking parameter<br/>from concrete id]
-    F --> H
-    G --> H
-    H --> I{503 / 429 after retries?}
-    I -->|no| J[return response]
-    I -->|yes, model != fallback,<br/>no files written| K[retry once on<br/>newest Flash-Lite]
-    K --> L[return response<br/>+ notice]
-```
+**Diagram:** [diagrams/model-resolution.mermaid](diagrams/model-resolution.mermaid) — how a `model=` value becomes a concrete model id, with the overload fallback.
