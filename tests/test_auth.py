@@ -10,6 +10,7 @@ import pytest
 
 from sidekick.auth import AuthError, build_auth, build_credentials
 from sidekick.config import AuthConfig, ConfigError
+from tests._fakes import FAKE_GOOGLE_API_KEY
 
 
 def _adc_config() -> AuthConfig:
@@ -176,9 +177,7 @@ class TestApiKey:
     def test_build_auth_api_key_value_as_env_name_raises_auth_error(self) -> None:
         # User pasted the key itself into api_key_env instead of a variable name
         with pytest.raises(AuthError, match="looks like an API key"):
-            build_auth(
-                AuthConfig(method="api_key", api_key_env="AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-            )
+            build_auth(AuthConfig(method="api_key", api_key_env=FAKE_GOOGLE_API_KEY))
 
     def test_build_auth_vertex_returns_credentials(self) -> None:
         mock_creds = MagicMock()
