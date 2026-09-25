@@ -1,5 +1,7 @@
 # Architecture
 
+The end-to-end request flow is also drawn in [diagrams/request-flow.mermaid](diagrams/request-flow.mermaid).
+
 ## Component Diagram
 
 ```mermaid
