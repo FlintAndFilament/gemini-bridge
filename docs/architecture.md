@@ -1,49 +1,10 @@
 # Architecture
 
-The end-to-end request flow is also drawn in [diagrams/request-flow.mermaid](diagrams/request-flow.mermaid).
+The end-to-end request flow, as Claude Code sees it: [diagrams/request-flow.mermaid](diagrams/request-flow.mermaid).
 
-## Component Diagram
+## Components
 
-```mermaid
-graph TD
-    M["__main__.py"] --> CFG["load_config()<br/>config.py"]
-    M --> AUTH["build_auth()<br/>auth.py"]
-    M --> CL["GeminiClient(config, credentials, api_key)<br/>client.py"]
-    M --> TR["TranscriptWriter(dir, startup time)<br/>transcript.py"]
-    M --> WS["build_workspace(config, cwd)<br/>workspace.py"]
-    M --> SRV["build_server(client, transcript, workspace)<br/>server.py"]
-
-    CFG --> JSON["~/.config/sidekick/config.json"]
-    AUTH --> CRED["google.auth Credentials<br/>or API key"]
-
-    WS --> SB["Sandbox<br/>sandbox.py"]
-    WS --> FT["FileTools + ToolRegistry<br/>file_tools.py"]
-    WS --> AR["ArtifactStore<br/>artifacts.py"]
-
-    SRV --> GUIDE["guide.py<br/>server_instructions() / help_text()"]
-    SRV --> MCP["FastMCP + 8 registered tools"]
-    MCP --> T1["ask"]
-    MCP --> T2["brainstorm"]
-    MCP --> T3["review"]
-    MCP --> T4["debug"]
-    MCP --> T5["architect"]
-    MCP --> T6["list_models"]
-    MCP --> T7["help"]
-    MCP --> T8["list_sessions"]
-
-    T1 & T2 & T3 & T4 & T5 --> BASE["tools/base.py<br/>call_gemini()"]
-    BASE --> CL
-    BASE --> WEB["web_tools.py<br/>resolve_capabilities()"]
-    BASE --> SRC["sources.py<br/>resolve_redirects() + sources_footer()"]
-    BASE --> TR
-    BASE --> WS
-    CL --> LOOP["tool_loop.py<br/>run_tool_loop()"]
-    CL --> WEB
-    T6 --> CL
-    T6 & BASE --> MOD["models.py<br/>shortlist / schema_hint / is_chat_capable"]
-    T7 --> GUIDE
-    T8 --> CL
-```
+**Diagram:** [diagrams/components.mermaid](diagrams/components.mermaid) — how the startup modules, the server and the eight tools connect.
 
 The five generating tools route through `call_gemini()` in `tools/base.py`.
 `list_models` and `list_sessions` call the client directly and never write a transcript;
@@ -125,49 +86,7 @@ Tools package: `src/sidekick/tools/`.
 13. The reply goes back to Claude Code as the tool result. Errors come back as
     `[sidekick error] ...` strings, never as exceptions.
 
-```mermaid
-sequenceDiagram
-    participant CC as Claude Code
-    participant T as Tool module
-    participant B as base.call_gemini()
-    participant C as client.py<br/>GeminiClient
-    participant L as tool_loop.run_tool_loop()
-    participant G as Gemini backend
-    participant S as sources.py
-    participant W as transcript + artifacts
-
-    CC->>T: tool call (prompt, thinking?, session_name?, model?, web?)
-    T->>B: call_gemini(...)
-    B->>B: resolve_capabilities(write, web)
-    B->>C: get_or_create_session(tool:name, model)
-    B->>C: ask(session, prompt, registry, web)
-    C->>L: run_tool_loop(generate, history, registry)
-    loop until a text answer (max 20 rounds)
-        L->>G: generate_content (GenerateContentConfig)
-        G-->>L: candidate
-        L->>L: record_grounding(candidate)
-        opt function calls
-            L->>L: registry.dispatch() via Sandbox
-        end
-    end
-    L-->>C: answer
-    alt terminal 503/429 and no write_file yet
-        C-->>B: ClientError
-        B->>C: ask(..., fallback model)
-        C-->>B: answer (notice prefixed later)
-    else success
-        C-->>B: answer
-    end
-    B->>S: resolve_redirects(record_uris)
-    S-->>B: real URLs
-    B->>B: append sources_footer()
-    B->>W: transcript.append()
-    opt artifact requested
-        B->>W: artifacts.save()
-    end
-    B-->>T: reply text
-    T-->>CC: reply text
-```
+**Diagram:** [diagrams/generating-call.mermaid](diagrams/generating-call.mermaid) — one generating call through the modules, step by step.
 
 ## Session Lifecycle
 
