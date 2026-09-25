@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from sidekick import setup_cli
+from tests._fakes import FAKE_GOOGLE_API_KEY
 
 # Captured before any test monkeypatches setup_cli._keychain_problem, so tests that need the
 # real validation logic (not the autouse no-op below) can restore it.
@@ -156,7 +157,7 @@ class TestRejectsBeforeWriting:
             "--auth-method",
             "api_key",
             "--api-key-env",
-            "AIzaSyD3adb33fD3adb33fD3adb33fD3adb33f0",
+            FAKE_GOOGLE_API_KEY,
         )
         assert code == 2 and not out["ok"]
         assert cfg.read_text() == original
@@ -250,7 +251,7 @@ class TestStatusNeverLeaksASavedSecret:
 
     def test_a_pasted_key_in_saved_config_is_not_echoed(self, cfg: Path) -> None:
         cfg.parent.mkdir(parents=True)
-        secret = "AIzaSyD3adb33fD3adb33fD3adb33fD3adb33f0"
+        secret = FAKE_GOOGLE_API_KEY
         cfg.write_text(json.dumps({"auth": {"method": "api_key", "api_key_env": secret}}))
         code, out = run(cfg, "status")
         assert code == 0
